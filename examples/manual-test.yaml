@@ -1,0 +1,104 @@
+schema:
+  id_field: key
+  fields:
+    - name: key
+      label: Issue
+      type: text
+      readonly: true
+    - name: title
+      label: Title
+      type: text
+      required: true
+    - name: description
+      label: Description
+      type: longtext
+    - name: status
+      label: Status
+      type: enum
+      options: [Backlog, To Do, In Progress, In Review, Done]
+    - name: labels
+      label: Labels
+      type: multienum
+      options: [bug, enhancement, backend, frontend, documentation, urgent]
+    - name: estimate
+      label: Estimate
+      type: number
+    - name: due_date
+      label: Due date
+      type: date
+    - name: blocked
+      label: Blocked
+      type: bool
+    - name: assignee
+      label: Assignee
+      type: enum
+      options: [Unassigned, alex, maria, sam]
+entities:
+  - key: PROJ-184
+    title: Prevent duplicate invoice emails
+    description: |
+      Customers receive two invoice emails when payment confirmation is retried.
+      Add idempotency to the notification job and cover the retry path.
+    status: In Progress
+    labels: [bug, backend, urgent]
+    estimate: 5
+    due_date: 2026-10-16
+    blocked: false
+    assignee: alex
+    source_url: https://jira.example.test/browse/PROJ-184
+    reporter: finance-ops
+
+  - key: PROJ-201
+    title: Add CSV export to the usage report
+    description: |
+      Add an Export CSV button to the usage report.
+      The export should reflect the active date range and account filter.
+    status: To Do
+    labels: [enhancement, frontend]
+    estimate: 3
+    due_date: 2026-10-28
+    blocked: false
+    assignee: maria
+    source_url: https://jira.example.test/browse/PROJ-201
+    acceptance_notes: Confirm the exported timestamps use UTC.
+
+  - key: GH-73
+    title: Document local development setup
+    description: |
+      The README skips the required database seed step.
+      Write a clean setup guide for a new contributor.
+    status: In Review
+    labels: [documentation]
+    estimate: 1
+    due_date: 2026-10-14
+    blocked: false
+    assignee: sam
+    repository: example-org/platform
+    issue_number: 73
+
+  - key: GH-91
+    title: Investigate slow search queries
+    description: |
+      Searches that include a date filter exceed the API timeout for large tenants.
+      Capture a query plan before choosing an index or query rewrite.
+    status: Backlog
+    labels: [backend]
+    estimate: 8
+    blocked: true
+    assignee: Unassigned
+    repository: example-org/platform
+    issue_number: 91
+
+  - key: PROJ-219
+    title: Replace legacy webhook signature header
+    description: |
+      Partners should receive the new signature format before the old header is removed.
+      Coordinate the rollout with the integrations team.
+    status: Done
+    labels: [backend, enhancement]
+    estimate: 2.5
+    due_date: 2026-10-10
+    blocked: false
+    assignee: alex
+    source_url: https://jira.example.test/browse/PROJ-219
+    release: 2026.10

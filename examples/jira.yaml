@@ -1,0 +1,41 @@
+schema:
+  id_field: key
+  fields:
+    - name: key
+      label: Ticket
+      type: text
+      readonly: true
+    - name: summary
+      type: text
+      required: true
+    - name: description
+      type: longtext
+    - name: status
+      type: enum
+      options: [To Do, In Progress, Done]
+    - name: labels
+      type: multienum
+      options: [backend, ui, bug]
+    - name: points
+      type: number
+    - name: due
+      type: date
+    - name: blocked
+      type: bool
+entities:
+  - key: PROJ-1
+    summary: Fix login
+    description: Users cannot sign in after resetting a password.
+    status: To Do
+    labels: [bug]
+    points: 3
+    due: 2026-10-20
+    blocked: false
+  - key: PROJ-2
+    summary: Improve import logs
+    description: Show the row number in parsing errors.
+    status: In Progress
+    labels: [backend]
+    points: 2
+    due: 2026-10-27
+    blocked: false

@@ -1,0 +1,244 @@
+package ui
+
+import "fmt"
+
+templ Page(data PageData) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>multieditor</title>
+			<script src={ templ.SafeURL(data.AssetBase + "htmx.min.js") }></script>
+			<script src={ templ.SafeURL(data.AssetBase + "app.js") } defer></script>
+			<link rel="stylesheet" href={ templ.SafeURL(data.AssetBase + "styles.css") }/>
+		</head>
+		<body>
+			<main class="mx-auto max-w-5xl px-4 py-8 pb-32">
+				<header class="mb-6">
+					<h1 class="text-2xl font-semibold tracking-tight">Edit entities</h1>
+					<p class="mt-1 text-sm text-muted-foreground">Review the fields below, then save the complete result.</p>
+				</header>
+				<div id="entities" class="space-y-5">
+					for _, entity := range data.Entities {
+						@EntityCard(data, entity)
+					}
+				</div>
+			</main>
+			@SaveBar(data, false)
+		</body>
+	</html>
+}
+
+templ EntityCard(data PageData, entity EntityView) {
+	<section id={ fmt.Sprintf("entity-%d", entity.Index) } class="rounded-lg border bg-card text-card-foreground shadow-xs">
+		<header class={ templ.Classes("flex items-center justify-between gap-4 px-5 py-4", templ.KV("border-b", !entity.Collapsed)) }>
+			<div class="flex min-w-0 items-center gap-3">
+				@CollapseToggle(data, entity)
+				<h2 class="truncate text-sm font-medium">{ entity.Title }</h2>
+				if entity.Collapsed && entity.HasErrors {
+					<span class="shrink-0 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">Has errors</span>
+				}
+				if entity.Collapsed && entity.ChangedCount > 0 {
+					<span class="shrink-0 rounded-full bg-changed/15 px-2 py-0.5 text-xs font-medium text-changed-foreground">{ fmt.Sprintf("%d changed", entity.ChangedCount) }</span>
+				}
+			</div>
+			@CardMenu(data, entity)
+		</header>
+		if !entity.Collapsed {
+			<div class="grid gap-5 p-5 md:grid-cols-2">
+				for _, field := range entity.Fields {
+					@FieldInput(data, entity, field)
+				}
+			</div>
+		}
+	</section>
+}
+
+// CollapseToggle shows an open eye while the card is expanded and a crossed
+// eye while it is collapsed. Pressing it sends the opposite state.
+templ CollapseToggle(data PageData, entity EntityView) {
+	<button
+		type="button"
+		class="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+		aria-expanded={ fmt.Sprintf("%t", !entity.Collapsed) }
+		aria-label={ collapseLabel(entity) }
+		title={ collapseLabel(entity) }
+		hx-post={ templ.SafeURL(fmt.Sprintf("/s/%s/entities/%d/collapsed", data.Token, entity.Index)) }
+		hx-vals={ fmt.Sprintf(`{"collapsed": "%t"}`, !entity.Collapsed) }
+		hx-target={ fmt.Sprintf("#entity-%d", entity.Index) }
+		hx-swap="outerHTML"
+	>
+		if entity.Collapsed {
+			@Icon(data, "eye-off")
+		} else {
+			@Icon(data, "eye")
+		}
+	</button>
+}
+
+templ CardMenu(data PageData, entity EntityView) {
+	<details class="relative" data-menu>
+		<summary
+			class="flex size-8 cursor-pointer list-none items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground [&::-webkit-details-marker]:hidden"
+			aria-label={ fmt.Sprintf("Actions for %s", entity.Title) }
+			aria-haspopup="menu"
+		>
+			@Icon(data, "dots")
+		</summary>
+		<div class="absolute right-0 z-10 mt-1 w-40 rounded-md border bg-popover p-1 text-popover-foreground shadow-md" role="menu">
+			<button
+				type="button"
+				role="menuitem"
+				class="block w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+				hx-post={ templ.SafeURL(fmt.Sprintf("/s/%s/entities/%d/reset", data.Token, entity.Index)) }
+				hx-target={ fmt.Sprintf("#entity-%d", entity.Index) }
+				hx-swap="outerHTML"
+			>Reset</button>
+		</div>
+	</details>
+}
+
+templ FieldInput(data PageData, entity EntityView, field FieldView) {
+	<div class={ templ.Classes("border-l-2 pl-3", templ.KV("border-changed", field.Changed), templ.KV("border-transparent", !field.Changed)) }>
+		<label class="mb-1.5 block text-sm font-medium" for={ fmt.Sprintf("field-%d-%s", entity.Index, field.Field.Name) }>
+			{ field.Field.Label }
+			if field.Field.Required {
+				<span class="text-destructive">*</span>
+			}
+		</label>
+		if field.Field.Type == "longtext" {
+			<textarea
+				id={ fmt.Sprintf("field-%d-%s", entity.Index, field.Field.Name) }
+				name="value"
+				class={ inputClass + " min-h-28" }
+				disabled?={ field.Field.Readonly }
+				hx-post={ templ.SafeURL(fmt.Sprintf("/s/%s/entities/%d/fields/%s", data.Token, entity.Index, field.Field.Name)) }
+				hx-trigger="keyup changed delay:400ms, change"
+				hx-target={ fmt.Sprintf("#status-%d-%s", entity.Index, field.Field.Name) }
+				hx-swap="outerHTML"
+			>{ String(field.Value) }</textarea>
+		} else if field.Field.Type == "enum" {
+			<select
+				id={ fmt.Sprintf("field-%d-%s", entity.Index, field.Field.Name) }
+				name="value"
+				class={ inputClass }
+				disabled?={ field.Field.Readonly }
+				hx-post={ templ.SafeURL(fmt.Sprintf("/s/%s/entities/%d/fields/%s", data.Token, entity.Index, field.Field.Name)) }
+				hx-trigger="change"
+				hx-target={ fmt.Sprintf("#status-%d-%s", entity.Index, field.Field.Name) }
+				hx-swap="outerHTML"
+			>
+				if !field.Field.Required {
+					<option value="">Select...</option>
+				}
+				for _, option := range field.Field.Options {
+					<option value={ option } selected?={ String(field.Value) == option }>{ option }</option>
+				}
+			</select>
+		} else if field.Field.Type == "multienum" {
+			<div class="flex flex-wrap gap-x-4 gap-y-2 rounded-md border border-input p-3" id={ fmt.Sprintf("group-%d-%s", entity.Index, field.Field.Name) }>
+				for _, option := range field.Field.Options {
+					<label class="inline-flex items-center gap-2 text-sm">
+						<input
+							type="checkbox"
+							class="size-4 accent-primary"
+							name="value"
+							value={ option }
+							checked?={ Contains(field.Value, option) }
+							disabled?={ field.Field.Readonly }
+							hx-post={ templ.SafeURL(fmt.Sprintf("/s/%s/entities/%d/fields/%s", data.Token, entity.Index, field.Field.Name)) }
+							hx-trigger="change"
+							hx-include={ fmt.Sprintf("#group-%d-%s", entity.Index, field.Field.Name) }
+							hx-target={ fmt.Sprintf("#status-%d-%s", entity.Index, field.Field.Name) }
+							hx-swap="outerHTML"
+						/>
+						{ option }
+					</label>
+				}
+			</div>
+		} else if field.Field.Type == "bool" {
+			<label class="inline-flex items-center gap-2">
+				<input
+					id={ fmt.Sprintf("field-%d-%s", entity.Index, field.Field.Name) }
+					type="checkbox"
+					class="size-4 accent-primary"
+					name="value"
+					checked?={ String(field.Value) == "true" }
+					disabled?={ field.Field.Readonly }
+					hx-post={ templ.SafeURL(fmt.Sprintf("/s/%s/entities/%d/fields/%s", data.Token, entity.Index, field.Field.Name)) }
+					hx-trigger="change"
+					hx-target={ fmt.Sprintf("#status-%d-%s", entity.Index, field.Field.Name) }
+					hx-swap="outerHTML"
+				/>
+				<span class="text-sm">Enabled</span>
+			</label>
+		} else {
+			<input
+				id={ fmt.Sprintf("field-%d-%s", entity.Index, field.Field.Name) }
+				type={ inputType(field.Field.Type) }
+				name="value"
+				value={ String(field.Value) }
+				class={ inputClass }
+				disabled?={ field.Field.Readonly }
+				hx-post={ templ.SafeURL(fmt.Sprintf("/s/%s/entities/%d/fields/%s", data.Token, entity.Index, field.Field.Name)) }
+				hx-trigger="keyup changed delay:400ms, change"
+				hx-target={ fmt.Sprintf("#status-%d-%s", entity.Index, field.Field.Name) }
+				hx-swap="outerHTML"
+			/>
+		}
+		@FieldStatus(entity.Index, field)
+	</div>
+}
+
+templ FieldStatus(index int, field FieldView) {
+	<div id={ fmt.Sprintf("status-%d-%s", index, field.Field.Name) } class="mt-1 min-h-5 text-xs">
+		if field.Error != "" {
+			<span class="text-destructive">{ field.Error }</span>
+		} else if field.Changed {
+			<span class="text-changed-foreground">Changed</span>
+		}
+	</div>
+}
+
+// SaveBar is the sticky action bar. With oob it renders as an out-of-band
+// htmx swap that replaces the bar already on the page.
+templ SaveBar(data PageData, oob bool) {
+	<div id="save-bar" { saveBarAttrs(oob)... } class="fixed inset-x-0 bottom-0 border-t bg-background/90 px-4 py-3 backdrop-blur">
+		<div class="mx-auto flex max-w-5xl items-center justify-between gap-4">
+			<p class="text-sm text-muted-foreground">
+				{ fmt.Sprintf("%d changed field(s)", data.Changes) }
+				if data.HasErrors {
+					<span class="ml-2 text-destructive">Fix validation errors before saving.</span>
+				}
+			</p>
+			<div class="flex gap-3">
+				<button class={ outlineButtonClass } hx-post={ templ.SafeURL(fmt.Sprintf("/s/%s/cancel", data.Token)) }>Cancel</button>
+				<button class={ primaryButtonClass } disabled?={ data.HasErrors } hx-post={ templ.SafeURL(fmt.Sprintf("/s/%s/save", data.Token)) }>Save</button>
+			</div>
+		</div>
+	</div>
+}
+
+// Icon draws a vendored Tabler icon (static/icons/<name>.svg) in the current
+// text colour.
+templ Icon(data PageData, name string) {
+	<span class="icon" style={ templ.SafeCSS(fmt.Sprintf("--icon: url(%sicons/%s.svg)", data.AssetBase, name)) } aria-hidden="true"></span>
+}
+
+templ DonePage(saved bool) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<body>
+			<main>
+				if saved {
+					<h1>Saved</h1>
+					<p>The result file was written. You can close this tab.</p>
+				} else {
+					<h1>Cancelled</h1>
+					<p>No changes were saved. You can close this tab.</p>
+				}
+			</main>
+		</body>
+	</html>
+}

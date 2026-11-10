@@ -1,0 +1,362 @@
+# multieditor POC product requirements
+
+## Summary
+
+multieditor is a temporary local web editor for a set of structured entities.
+An agent writes the entities and an explicit schema to YAML, launches the
+editor, and gives the local URL to the user. The user makes bulk changes in the
+browser. When they save, multieditor writes a YAML result that the agent can
+apply to Jira, a database, or another source system.
+
+The POC focuses on a safe hand-off between an agent and a person. It does not
+connect to source systems itself.
+
+## Problem
+
+Chat is a poor place to review and change several records with many fields.
+The user needs to compare values, edit long text, select valid enum values,
+and make a deliberate save decision. A short-lived local editor gives the user
+the right control without adding a permanent service or integration.
+
+## Goals
+
+- Load existing entities from YAML.
+- Use an explicit field schema to render controls and validate edits.
+- Let one user edit entities in a card-based browser UI.
+- Support text, multiline text, number, boolean, enum, multi-select, and date
+  fields.
+- Allow any field to be read-only.
+- Stop invalid saves with basic validation.
+- Write a full entity result and a concise change summary in YAML.
+- Run only on the local machine for the life of the editing session.
+
+## Non-goals
+
+- Create or delete entities.
+- Edit remotely or support multiple users.
+- Authenticate users.
+- Read JSON or CSV.
+- Infer a schema from entity values.
+- Call Jira, databases, or any third-party API.
+- Keep state after the process exits.
+- Support validation rules beyond required values, type checks, and allowed
+  enum values.
+- Offer a table view in the POC.
+
+## Users
+
+The direct user is a person reviewing a set of proposed or requested changes.
+The caller is an agent that prepares input and consumes output.
+
+## Primary flow
+
+```mermaid
+sequenceDiagram
+    participant Agent
+    participant CLI as multieditorCLI
+    participant Browser
+    participant Output as OutputYAML
+
+    Agent->>CLI: Start with input and output paths
+    CLI->>CLI: Parse and validate input YAML
+    CLI-->>Agent: Print localhost URL
+    Agent-->>Browser: Give user the URL
+    Browser->>CLI: Load entity cards
+    Browser->>CLI: Submit field edits and validation requests
+    Browser->>CLI: Save
+    CLI->>Output: Atomically write result YAML
+    CLI-->>Agent: Print saved status and output path, then exit
+    Agent->>Output: Read changes and apply them
+```
+
+If the user selects Cancel, the CLI writes a cancelled result, reports it, and
+exits. The agent must not apply changes from a cancelled result.
+
+## Command-line interface
+
+```text
+multieditor --input in.yaml --output out.yaml [--port 0] [--open]
+```
+
+Arguments:
+
+- `--input` is the required YAML document containing the schema and entities.
+- `--output` is the required YAML file written when the session ends.
+- `--port` defaults to `0`, which asks the operating system for an available
+  port.
+- `--open` opens the local URL in the default browser. Without it, the caller
+  can open the URL itself.
+
+Startup behavior:
+
+1. Parse and validate the input before starting the HTTP server.
+2. Bind only to `127.0.0.1`.
+3. Print the full local URL to standard output.
+4. Keep the process alive until Save, Cancel, or an interrupt.
+
+Completion behavior:
+
+- Print the final `status` and output path to standard output.
+- Exit with `0` after a save.
+- Exit with `2` after a cancel, including Ctrl+C.
+- Exit with `1` for input, server, or output errors.
+
+## Agent waiting protocol
+
+The calling agent launches the CLI as a background process and waits for up to
+five minutes. A save or cancel causes the process to write the output and exit.
+
+If five minutes pass with no output, the agent ends its current loop and tells
+the user to send `continue` once they finish editing. The CLI and browser stay
+available. On `continue`, the agent checks whether the process exited and
+whether the output file exists. It then reads the output before continuing its
+source-system work.
+
+## Input YAML
+
+The input has `schema` and `entities` keys.
+
+`schema.id_field` names a field that identifies each entity. The optional
+`schema.title_field` names an entity key whose value is the card title. The key
+does not have to be declared in `schema.fields`, so it is not an input and the
+user cannot edit it. A title value must be a scalar. A card falls back to the
+identifier when `title_field` is unset or the entity has no value for it.
+`schema.fields` defines every editable or displayed field. Field definitions contain:
+
+- `name`, the key in an entity object.
+- `label`, the UI label. If absent, use `name`.
+- `type`, one of `text`, `longtext`, `number`, `bool`, `enum`, `multienum`, or
+  `date`.
+- `required`, optional and false by default.
+- `readonly`, optional and false by default.
+- `options`, required for `enum` and `multienum`, and forbidden for other
+  types.
+
+```yaml
+schema:
+  id_field: key
+  fields:
+    - name: key
+      label: Ticket
+      type: text
+      readonly: true
+    - name: summary
+      type: text
+      required: true
+    - name: description
+      type: longtext
+    - name: status
+      type: enum
+      options: [To Do, In Progress, Done]
+    - name: labels
+      type: multienum
+      options: [backend, ui, bug]
+    - name: points
+      type: number
+    - name: due
+      type: date
+    - name: blocked
+      type: bool
+entities:
+  - key: PROJ-1
+    summary: Fix login
+    description: Users cannot sign in after resetting a password.
+    status: To Do
+    labels: [bug]
+    points: 3
+    due: 2026-10-20
+    blocked: false
+```
+
+The loader must preserve unknown keys in each entity. The UI does not render
+them in the POC, but they must appear unchanged in a saved result.
+
+## Output YAML
+
+Save writes this shape:
+
+```yaml
+status: saved
+saved_at: 2026-10-13T08:15:30Z
+changes:
+  - entity_id: PROJ-1
+    field: status
+    from: To Do
+    to: In Progress
+entities:
+  - key: PROJ-1
+    summary: Fix login
+    description: Users cannot sign in after resetting a password.
+    status: In Progress
+    labels: [bug]
+    points: 3
+    due: 2026-10-20
+    blocked: false
+```
+
+`changes` contains one entry for each changed field. Values retain their YAML
+types where possible. `entities` contains all entities in their final form,
+including unedited entity keys that were not declared by the schema.
+
+Cancel writes:
+
+```yaml
+status: cancelled
+```
+
+The program writes output atomically by creating a temporary file in the
+target directory and renaming it to `--output`.
+
+## UI requirements
+
+- Render one card for each entity.
+- Show the card title in each card header: the `title_field` value, or the
+  identifier when there is none.
+- Put an eye toggle button at the left of the card header, before the title.
+  An open eye means the card is expanded and a crossed eye means it is
+  collapsed. Pressing it collapses or expands the card. A collapsed card shows
+  a changed-field count and a validation-error marker in the header, so a hidden
+  edit or error is not lost. The collapsed state lives in session memory and is
+  not written to the output.
+- Put card actions in an ellipsis menu at the right of the header. The menu
+  holds "Reset", which restores the card to its input values and keeps its
+  collapsed state. More actions will join it later.
+- Render a control that matches the field type:
+  - `text`: single-line input.
+  - `longtext`: textarea.
+  - `number`: numeric input.
+  - `bool`: checkbox.
+  - `enum`: select.
+  - `multienum`: checkbox group or another accessible multi-select control.
+  - `date`: date input.
+- Render read-only values without allowing mutation.
+- Mark fields whose value differs from the input.
+- Display a global count of changed fields or entities.
+- Keep Save and Cancel in a sticky action bar.
+- Show field-level validation errors next to the relevant control.
+- Disable or reject Save while validation errors exist.
+
+The UI uses reusable `templ` components:
+
+- `Layout`
+- `EntityCard`
+- `CardMenu`
+- field-input components or variants for every supported type
+- `ValidationMessage`
+- `SaveBar`
+
+HTMX requests partial updates for edits, validation feedback, changed markers,
+and the global change count. The Go process holds the working state in memory.
+
+Tailwind styles components. Use the standalone Tailwind CLI so the POC has no
+Node runtime requirement.
+
+The look is neutral and close to system UI, modelled on shadcn/ui: its neutral
+colour tokens, a light and a dark theme that follows the operating-system
+setting, small radii and subtle borders. Icons come from Tabler, vendored as
+`.svg` files and drawn as CSS masks, not embedded in templates.
+
+## Validation
+
+At load time, reject input where:
+
+- the schema has no valid identifier field;
+- a field name appears more than once;
+- a field type is unsupported;
+- an enum or multi-select field lacks options;
+- an entity lacks its identifier; or
+- a schema-defined value has the wrong type.
+
+During editing, reject:
+
+- empty required values;
+- non-numeric values for number fields;
+- invalid dates;
+- a value outside an enum's options; and
+- any multi-select member outside its options.
+
+The server must reject attempted writes to read-only fields even if a client
+submits one directly.
+
+## Security and lifecycle
+
+- Listen on `127.0.0.1`, never a public interface.
+- Start only after input validation succeeds.
+- Run until Save, Cancel, or interrupt.
+- Treat Ctrl+C as cancel and write a cancelled result when possible.
+- Keep the session in memory only.
+- Include a random session token in the local URL if practical. HTTP handlers
+  must require that token for state-changing requests.
+
+## Implementation shape
+
+```mermaid
+flowchart LR
+    InputYAML[Input YAML] --> Loader[Schema loader and validator]
+    Loader --> Store[In-memory session store]
+    Store --> Handlers[Go HTTP and HTMX handlers]
+    Handlers --> Components[templ components]
+    Components --> Browser[Local browser]
+    Browser --> Handlers
+    Handlers --> Writer[Atomic YAML output writer]
+    Writer --> OutputYAML[Output YAML]
+    Assets[Embedded Tailwind assets] --> Components
+```
+
+All generated templates and static assets ship in the compiled Go binary via
+`go:embed`.
+
+## Acceptance criteria
+
+```gherkin
+Feature: edit YAML entities locally
+
+  Scenario: Load entities into cards
+    Given a valid YAML input with two entities and an explicit schema
+    When the caller starts multieditor
+    Then the CLI prints a URL on 127.0.0.1
+    And the browser displays one card for each entity
+    And each field uses the control selected by its schema type
+
+  Scenario: Save valid changes
+    Given the editor is open with valid entities
+    When the user changes a field and selects Save
+    Then the output YAML has status "saved"
+    And it includes the full edited entities
+    And it records the old and new value in changes
+    And multieditor exits with code 0
+
+  Scenario: Reject invalid changes
+    Given an enum field allows "To Do" and "Done"
+    When a client submits "Blocked" for that field
+    Then the server reports a field-level validation error
+    And the user cannot save until the value is valid
+
+  Scenario: Protect read-only fields
+    Given a field is marked readonly
+    When a client submits a changed value for the field
+    Then the server rejects the change
+    And the saved entity keeps its input value
+
+  Scenario: Cancel an editing session
+    Given the editor is open
+    When the user selects Cancel
+    Then the output YAML has status "cancelled"
+    And it contains no entities
+    And multieditor exits with code 2
+
+  Scenario: Finish after the agent wait window
+    Given the agent has waited five minutes without a result
+    When the user saves and then sends "continue" to the agent
+    Then the agent reads the saved output before applying changes
+```
+
+## Future work
+
+- Add and delete entities.
+- JSON and CSV adapters.
+- Spreadsheet-like table view.
+- Extended validation constraints.
+- Schema inference.
+- An agent skill or wrapper command that prepares files, starts the session,
+  waits for completion, and applies the result.

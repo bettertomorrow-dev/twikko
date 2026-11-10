@@ -1,0 +1,20 @@
+# Build output and the downloaded Tailwind executable (make tools)
+/bin/
+
+# Editors and operating system
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.tmp
+
+# Go test artifacts
+*.test
+*.out
+coverage.*
+
+# Local editing sessions and secrets
+/out.yaml
+/*-out.yaml
+.env
+.env.*
