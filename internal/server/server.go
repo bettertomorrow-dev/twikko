@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/a-h/templ"
+	"multieditor/internal/icons"
 	"multieditor/internal/output"
 	"multieditor/internal/session"
 	"multieditor/internal/ui"
@@ -103,7 +104,13 @@ func (s *Server) serveAsset(w http.ResponseWriter, r *http.Request, name string)
 		http.NotFound(w, r)
 		return
 	}
-	data, err := ui.Assets.ReadFile("static/" + name)
+	var data []byte
+	var err error
+	if icon, ok := strings.CutPrefix(name, "icons/"); ok {
+		data, err = icons.Read(strings.TrimSuffix(icon, ".svg"))
+	} else {
+		data, err = ui.Assets.ReadFile("static/" + name)
+	}
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -185,6 +192,9 @@ func (s *Server) entityAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.render(w, ui.FieldStatus(index, field))
+	if entity := data.Entity(index); entity.HasHeader {
+		s.render(w, ui.HeaderWidgets(data, entity, true))
+	}
 	s.renderOOBSaveBar(w, data)
 }
 

@@ -1,5 +1,18 @@
 schema:
   id_field: key
+  header:
+    - type: icon
+      source: type
+      variants:
+        Bug: { icon: bug, intent: danger }
+        Task: { icon: checkbox, intent: info }
+    - { type: tag, source: key }
+    - { type: text, source: summary, style: { bold: true } }
+    - type: tag
+      source: status
+      variants:
+        In Progress: { intent: info }
+        Done: { intent: success }
   fields:
     - name: key
       label: Ticket
@@ -24,6 +37,7 @@ schema:
       type: bool
 entities:
   - key: PROJ-1
+    type: Bug
     summary: Fix login
     description: Users cannot sign in after resetting a password.
     status: To Do
@@ -32,6 +46,7 @@ entities:
     due: 2026-10-20
     blocked: false
   - key: PROJ-2
+    type: Task
     summary: Improve import logs
     description: Show the row number in parsing errors.
     status: In Progress

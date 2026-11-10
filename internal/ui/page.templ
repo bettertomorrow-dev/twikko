@@ -1,6 +1,10 @@
 package ui
 
-import "fmt"
+import (
+	"fmt"
+
+	"multieditor/internal/schema"
+)
 
 templ Page(data PageData) {
 	<!DOCTYPE html>
@@ -35,7 +39,11 @@ templ EntityCard(data PageData, entity EntityView) {
 		<header class={ templ.Classes("flex items-center justify-between gap-4 px-5 py-4", templ.KV("border-b", !entity.Collapsed)) }>
 			<div class="flex min-w-0 items-center gap-3">
 				@CollapseToggle(data, entity)
-				<h2 class="truncate text-sm font-medium">{ entity.Title }</h2>
+				if entity.HasHeader {
+					@HeaderWidgets(data, entity, false)
+				} else {
+					<h2 class="truncate text-sm font-medium">{ entity.Title }</h2>
+				}
 				if entity.Collapsed && entity.HasErrors {
 					<span class="shrink-0 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">Has errors</span>
 				}
@@ -53,6 +61,29 @@ templ EntityCard(data PageData, entity EntityView) {
 			</div>
 		}
 	</section>
+}
+
+// HeaderWidgets draws the configured header pieces in one row. With oob it
+// renders as an out-of-band htmx swap, so editing a field refreshes the widgets
+// bound to it.
+templ HeaderWidgets(data PageData, entity EntityView, oob bool) {
+	<h2 id={ fmt.Sprintf("header-widgets-%d", entity.Index) } { oobAttrs(oob)... } class="flex min-w-0 items-center gap-3">
+		for _, widget := range entity.Widgets {
+			@HeaderWidget(data, widget)
+		}
+	</h2>
+}
+
+templ HeaderWidget(data PageData, widget WidgetView) {
+	if widget.Type == schema.WidgetIcon {
+		<span class={ widget.Class } role="img" aria-label={ widget.Text } title={ widget.Text }>
+			@Icon(data, widget.Icon)
+		</span>
+	} else if widget.Type == schema.WidgetTag {
+		<span class={ widget.Class }>{ widget.Text }</span>
+	} else {
+		<span class={ widget.Class } title={ widget.Text }>{ widget.Text }</span>
+	}
 }
 
 // CollapseToggle shows an open eye while the card is expanded and a crossed
@@ -204,7 +235,7 @@ templ FieldStatus(index int, field FieldView) {
 // SaveBar is the sticky action bar. With oob it renders as an out-of-band
 // htmx swap that replaces the bar already on the page.
 templ SaveBar(data PageData, oob bool) {
-	<div id="save-bar" { saveBarAttrs(oob)... } class="fixed inset-x-0 bottom-0 border-t bg-background/90 px-4 py-3 backdrop-blur">
+	<div id="save-bar" { oobAttrs(oob)... } class="fixed inset-x-0 bottom-0 border-t bg-background/90 px-4 py-3 backdrop-blur">
 		<div class="mx-auto flex max-w-5xl items-center justify-between gap-4">
 			<p class="text-sm text-muted-foreground">
 				{ fmt.Sprintf("%d changed field(s)", data.Changes) }

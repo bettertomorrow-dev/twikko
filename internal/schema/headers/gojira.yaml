@@ -1,0 +1,28 @@
+# Card header for tickets pulled by the gojira skill. The sources are the entity
+# keys that skill writes: type, key, title, status. A type or status that is not
+# listed gets the fallback icon or a neutral tag.
+- type: icon
+  source: type
+  variants:
+    Bug: { icon: bug, intent: danger }
+    Task: { icon: checkbox, intent: info }
+    Sub-task: { icon: subtask, intent: info }
+    Story: { icon: bookmark, intent: success }
+    Feature: { icon: sparkles, intent: success }
+    Improvement: { icon: trending-up, intent: success }
+    Epic: { icon: bolt, intent: warning }
+    Initiative: { icon: target, intent: warning }
+    Spike: { icon: flask, intent: neutral }
+- type: tag
+  source: key
+- type: text
+  source: title
+  style: { bold: true }
+- type: tag
+  source: status
+  variants:
+    In Progress: { intent: info }
+    In Review: { intent: info }
+    QA: { intent: warning }
+    Blocked: { intent: danger }
+    Done: { intent: success }

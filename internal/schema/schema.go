@@ -37,8 +37,11 @@ type Schema struct {
 	// TitleField names an entity key whose value is the card title. The key
 	// need not be declared in Fields. Cards fall back to the identifier when
 	// it is unset or an entity lacks it.
-	TitleField string  `yaml:"title_field,omitempty"`
-	Fields     []Field `yaml:"fields"`
+	TitleField string `yaml:"title_field,omitempty"`
+	// Header replaces the title with widgets bound to entity data. It cannot be
+	// combined with TitleField.
+	Header *Header `yaml:"header,omitempty"`
+	Fields []Field `yaml:"fields"`
 }
 
 type Document struct {
@@ -91,6 +94,13 @@ func Parse(data []byte) (*Document, error) {
 				return nil, fmt.Errorf("entity %d title field %q must be a scalar", i, s.TitleField)
 			}
 		}
+		if s.Header != nil {
+			for w, widget := range s.Header.Widgets {
+				if _, _, err := HeaderValue(entity, widget.Source); err != nil {
+					return nil, fmt.Errorf("entity %d header widget %d: %w", i, w, err)
+				}
+			}
+		}
 		for _, field := range s.Fields {
 			if value := MapValue(entity, field.Name); value != nil {
 				if _, err := ParseNode(field, value); err != nil {
@@ -100,7 +110,23 @@ func Parse(data []byte) (*Document, error) {
 		}
 		entities[i] = Clone(entity)
 	}
+	if s.Header != nil && len(entities) > 0 {
+		for w, widget := range s.Header.Widgets {
+			if !anyEntityHas(entities, widget.Source) {
+				return nil, fmt.Errorf("header widget %d: source %q matches no entity", w, widget.Source)
+			}
+		}
+	}
 	return &Document{Schema: s, Entities: entities}, nil
+}
+
+func anyEntityHas(entities []*yaml.Node, source string) bool {
+	for _, entity := range entities {
+		if _, ok, _ := HeaderValue(entity, source); ok {
+			return true
+		}
+	}
+	return false
 }
 
 func ValidateSchema(s Schema) error {
@@ -109,6 +135,14 @@ func ValidateSchema(s Schema) error {
 	}
 	if len(s.Fields) == 0 {
 		return errors.New("schema.fields is required")
+	}
+	if s.Header != nil {
+		if s.TitleField != "" {
+			return errors.New("schema.title_field cannot be combined with schema.header")
+		}
+		if err := ValidateHeader(s.Header); err != nil {
+			return err
+		}
 	}
 	seen := make(map[string]bool)
 	idFound := false

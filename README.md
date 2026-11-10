@@ -71,7 +71,9 @@ input, server, or output error.
 ```yaml
 schema:
   id_field: key          # names the field that identifies each entity
-  title_field: card_title  # optional: entity key shown as the card title
+  header:                # optional: widgets drawn in the card header
+    - { type: tag, source: key }
+    - { type: text, source: summary, style: { bold: true } }
   fields:
     - name: key
       label: Ticket
@@ -88,7 +90,6 @@ schema:
       options: [backend, ui, bug]
 entities:
   - key: PROJ-1
-    card_title: PROJ-1 · Fix login
     summary: Fix login
     status: To Do
     labels: [bug]
@@ -98,6 +99,27 @@ Field types are `text`, `longtext`, `number`, `bool`, `enum`, `multienum`, and
 `date`. Any field can be `required` or `readonly`. `enum` and `multienum` need
 `options`; other types must not have them. Entity keys that the schema does not
 declare are not shown, but they are kept unchanged in the output.
+
+### Card header
+
+By default a card header shows the entity identifier. `schema.title_field`
+names an entity key to show instead. `schema.header` replaces the title with a
+list of widgets placed side by side between the eye toggle and the menu:
+
+- `icon`: a vendored Tabler icon. `variants` map a value to an icon and an
+  `intent` (`neutral`, `info`, `success`, `warning`, `danger`). A value with no
+  variant gets a neutral diamond.
+- `tag`: the value in a pill. `variants` map a value to an `intent`.
+- `text`: the value as text, with `style` `bold`, `italic`, and `muted`.
+
+`source` is an entity key or a dotted path to a scalar, and may point at keys
+the schema does not declare. A widget without a value is skipped. Widgets show
+the current values, so a tag bound to an editable field follows the edits.
+
+`header: { template: gojira }` selects a built-in widget list instead of
+writing one. It is the header for tickets pulled by the `gojira` skill. An
+unknown template name or icon name fails the load and lists the valid ones.
+`title_field` and `header` cannot be used together.
 
 ## Output
 
@@ -137,9 +159,11 @@ The full requirements are in [docs/PRD.md](docs/PRD.md).
 
 [`skills/multieditor`](skills/multieditor/SKILL.md) is an agent skill that
 explains how to write the input, start the tool, wait for the user, and read the
-result. It is linked into `.claude/skills`, `.agents/skills`, and
-`.codex/skills`, so Claude Code, Codex, and other agents pick it up inside this
-repository.
+result. [`skills/gojira`](skills/gojira/SKILL.md) pulls Jira tickets through the
+Atlassian MCP and opens them in multieditor. It runs only when you invoke it by
+name. Both are linked into `.claude/skills`, `.agents/skills`, and
+`.codex/skills`, so Claude Code, Codex, and other agents pick them up inside
+this repository.
 
 To run the latest source from any directory, link the dev wrapper onto your
 `PATH`:
@@ -174,12 +198,14 @@ Layout:
 
 ```text
 main.go              CLI entry point and process lifecycle
-internal/schema      Input parsing and validation
+internal/schema      Input parsing and validation, header widgets and templates
+internal/icons       Vendored Tabler icons, the list of valid icon names
 internal/session     In-memory edit state and change tracking
 internal/output      Atomic YAML output writer
 internal/server      HTTP and HTMX handlers, token check, asset allowlist
 internal/ui          templ components, Tailwind input, embedded static files
-skills/multieditor   Agent skill
+skills/multieditor   Agent skill for running the tool
+skills/gojira        Agent skill that pulls Jira tickets into multieditor
 examples/            Sample input files
 docs/PRD.md          Product requirements
 AGENTS.md            Instructions for coding agents working on this repo
@@ -192,9 +218,9 @@ theme. Components use semantic classes such as `bg-background` and
 `text-muted-foreground`, never fixed palette colours.
 
 Icons are [Tabler Icons](https://tabler.io/icons), vendored as `.svg` files in
-`internal/ui/static/icons/` and drawn as CSS masks by the `Icon` component. To
-add one, put its name in `TABLER_ICONS` in the `Makefile`, run `make vendor`,
-and use `@Icon(data, "<name>")` in a template.
+`internal/icons/svg/` and drawn as CSS masks by the `Icon` component. To add
+one, put its name in `TABLER_ICONS` in the `Makefile`, run `make vendor`, and
+use `@Icon(data, "<name>")` in a template or the name in a header widget.
 
 ## Scope
 
@@ -207,5 +233,5 @@ memory and ends with the process.
 
 multieditor is released under the MIT License; see [LICENSE](LICENSE). The
 vendored Tabler icons are also MIT licensed; see
-`internal/ui/static/icons/LICENSE`. HTMX is vendored as
+`internal/icons/svg/LICENSE`. HTMX is vendored as
 `internal/ui/static/htmx.min.js`.

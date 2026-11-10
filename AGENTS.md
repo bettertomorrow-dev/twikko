@@ -59,12 +59,16 @@ resuming its work.
   not a Node runtime.
 - The theme is the shadcn/ui neutral token set in `internal/ui/input.css`,
   with a light and a dark variant that follows the operating-system setting.
+  The `changed`, `info`, `success`, and `warning` tokens extend it.
   Components use semantic utilities (`bg-background`, `text-muted-foreground`,
   `border-input`, ...), never palette colours such as `slate-200`.
 - Icons are Tabler icons. `make vendor` downloads the pinned `.svg` files into
-  `internal/ui/static/icons/`. Templates draw them with the `Icon` component,
-  which sets a CSS mask, so no icon path data lives in a template. To add an
-  icon, add its name to `TABLER_ICONS` in the Makefile and run `make vendor`.
+  `internal/icons/svg/`. Templates draw them with the `Icon` component, which
+  sets a CSS mask, so no icon path data lives in a template. To add an icon, add
+  its name to `TABLER_ICONS` in the Makefile and run `make vendor`. The
+  embedded files are also the list of valid icon names for header widgets.
+- Header widget classes live in `internal/ui/data.go` as full class strings, so
+  Tailwind finds them. Never build a class name from a YAML value.
 - Embed generated templates and static assets into one binary with `go:embed`.
 - Bind the server to `127.0.0.1` only. It must run only for the editing
   session.
@@ -73,8 +77,11 @@ resuming its work.
 
 ## UI conventions
 
-- Show one entity per card. The card header shows the schema's `title_field`
-  value, or the identifier field when there is none.
+- Show one entity per card. The card header shows the schema's `header` widgets,
+  else its `title_field` value, else the identifier field. Widgets sit between
+  the eye toggle and the ellipsis menu, left-aligned with an equal gap. A widget
+  with no value is skipped. Widgets read the current values, so editing a field
+  refreshes the widgets bound to it.
 - Put an eye toggle at the header's top left. An open eye means the card is
   expanded, a crossed eye means it is collapsed. Pressing it flips the state.
 - Put card actions, currently only Reset, in an ellipsis dropdown at the right
@@ -84,6 +91,22 @@ resuming its work.
 - Show validation feedback next to the field that caused it.
 - Mark changed fields.
 - Keep Save and Cancel visible while the user scrolls.
+
+## Example data
+
+Never commit corporate or work-related content as example data. This covers
+`examples/`, skill assets, test fixtures, docs, and code comments. Examples
+copied from a real Jira, database, or other work system leak employer
+information into git history, and a later edit does not remove it from there.
+
+- Do not copy real ticket keys, project names, titles, descriptions, people's
+  names or emails, company or product names, hostnames, or cloud IDs.
+- When a skill pulls real data to test it, keep that data in a temporary
+  directory. Do not paste it into a file in the repository.
+- Use invented values: keys like `PROJ-101`, made-up names, `example.com`.
+  Invented values must not resemble a real ticket the author works on.
+- If a real value is needed to reproduce a bug, replace it with a made-up one of
+  the same shape (type, length, characters) before committing.
 
 ## Documentation
 

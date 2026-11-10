@@ -121,6 +121,26 @@ The input has `schema` and `entities` keys.
 does not have to be declared in `schema.fields`, so it is not an input and the
 user cannot edit it. A title value must be a scalar. A card falls back to the
 identifier when `title_field` is unset or the entity has no value for it.
+
+The optional `schema.header` replaces the plain title with a list of widgets.
+It cannot be combined with `title_field`. Each widget has:
+
+- `type`, one of `icon`, `tag`, or `text`.
+- `source`, an entity key or a dotted path into nested mappings, which must
+  hold a scalar. It may name a key the schema does not declare. An entity with
+  no value at the source skips the widget. A source found in no entity fails
+  the load, because it is almost certainly a typo.
+- `variants`, for `icon` and `tag`: a map from a value, matched exactly, to
+  `intent` and, for icons only, `icon`. `intent` is `neutral` (the default),
+  `info`, `success`, `warning`, or `danger`. An icon whose value matches no
+  variant draws `square-rotated` in the neutral intent.
+- `style`, for `text`: `bold`, `italic`, `muted`. The set is closed because
+  Tailwind needs every class spelled out at build time.
+
+`header: { template: <name> }` selects a widget list built into the binary,
+for example `gojira` for tickets pulled by the gojira skill. A template cannot
+be extended. An unknown template name or icon name fails the load and the
+error lists the valid ones. Unknown keys in a widget fail the load too.
 `schema.fields` defines every editable or displayed field. Field definitions contain:
 
 - `name`, the key in an entity object.
@@ -210,14 +230,20 @@ target directory and renaming it to `--output`.
 ## UI requirements
 
 - Render one card for each entity.
-- Show the card title in each card header: the `title_field` value, or the
-  identifier when there is none.
+- Show the card title in each card header: the `header` widgets, else the
+  `title_field` value, else the identifier.
 - Put an eye toggle button at the left of the card header, before the title.
   An open eye means the card is expanded and a crossed eye means it is
   collapsed. Pressing it collapses or expands the card. A collapsed card shows
   a changed-field count and a validation-error marker in the header, so a hidden
   edit or error is not lost. The collapsed state lives in session memory and is
   not written to the output.
+- Place header widgets left-aligned between the eye toggle and the ellipsis
+  menu, with an equal gap. A text widget truncates when space runs out. Widgets
+  show the current values, so editing a field refreshes the widgets bound to
+  it without a reload. An icon-only widget carries its value as an accessible
+  name and tooltip. A collapsed card keeps its changed-count and error markers
+  after the widgets.
 - Put card actions in an ellipsis menu at the right of the header. The menu
   holds "Reset", which restores the card to its input values and keeps its
   collapsed state. More actions will join it later.
@@ -317,6 +343,42 @@ Feature: edit YAML entities locally
     Then the CLI prints a URL on 127.0.0.1
     And the browser displays one card for each entity
     And each field uses the control selected by its schema type
+
+  Scenario: 1 - A card header combines several pieces of ticket data
+    Given an input that asks for a ticket type icon, the ticket id, and the title in the header
+    When the user opens the editor
+    Then each card shows the icon, the id and the title side by side between the eye toggle and the actions menu
+
+  Scenario: 2 - A value maps to an icon and colour
+    Given an input that maps the type "Bug" to a red bug icon
+    When the user opens the editor
+    Then a bug ticket shows a red bug icon
+    And a ticket of an unmapped type shows a neutral diamond icon
+
+  Scenario: 3 - A header piece with no data is skipped
+    Given a ticket without a due date and a header that shows the due date
+    When the user opens the editor
+    Then that ticket's header shows no due date and no empty gap
+
+  Scenario: 4 - The header follows edits
+    Given a header that shows a ticket's status
+    When the user changes the status field
+    Then the header shows the new status without a page reload
+
+  Scenario: 5 - An input with no header settings looks as before
+    Given an input without header settings
+    When the user opens the editor
+    Then each card shows its title as it does today
+
+  Scenario: 6 - A misconfigured header is rejected
+    Given an input whose header refers to an unknown widget, icon, or template
+    When the agent starts the editor
+    Then the editor refuses to start and names the problem and the valid choices
+
+  Scenario: 7 - An agent picks a ready-made header by name
+    Given an input that selects a built-in header template
+    When the user opens the editor
+    Then the cards show the header that template defines
 
   Scenario: Save valid changes
     Given the editor is open with valid entities

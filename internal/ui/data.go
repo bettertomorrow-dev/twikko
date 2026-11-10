@@ -7,6 +7,7 @@ import (
 	"github.com/a-h/templ"
 
 	"go.yaml.in/yaml/v3"
+	"multieditor/internal/icons"
 	"multieditor/internal/schema"
 	"multieditor/internal/session"
 )
@@ -21,6 +22,32 @@ const (
 	outlineButtonClass = "rounded-md border bg-background px-4 py-2 text-sm font-medium shadow-xs hover:bg-accent hover:text-accent-foreground"
 	primaryButtonClass = "rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-xs hover:bg-primary/90 " +
 		"disabled:cursor-not-allowed disabled:opacity-50"
+)
+
+// Header widget styling. Classes are spelled out in full, because Tailwind finds
+// them by scanning source files at build time and cannot expand a name built
+// from a YAML value. A theme token backs every intent.
+var (
+	iconIntentClass = map[schema.Intent]string{
+		schema.IntentNeutral: "text-muted-foreground",
+		schema.IntentInfo:    "text-info-foreground",
+		schema.IntentSuccess: "text-success-foreground",
+		schema.IntentWarning: "text-warning-foreground",
+		schema.IntentDanger:  "text-destructive",
+	}
+	tagIntentClass = map[schema.Intent]string{
+		schema.IntentNeutral: "bg-secondary text-secondary-foreground",
+		schema.IntentInfo:    "bg-info/10 text-info-foreground",
+		schema.IntentSuccess: "bg-success/10 text-success-foreground",
+		schema.IntentWarning: "bg-warning/15 text-warning-foreground",
+		schema.IntentDanger:  "bg-destructive/10 text-destructive",
+	}
+)
+
+const (
+	iconWidgetClass = "inline-flex shrink-0 items-center "
+	tagWidgetClass  = "inline-flex shrink-0 items-center rounded-md px-2 py-0.5 text-xs font-medium "
+	textWidgetClass = "min-w-0 truncate text-sm "
 )
 
 type FieldView struct {
@@ -38,6 +65,19 @@ type EntityView struct {
 	ChangedCount int
 	HasErrors    bool
 	Fields       []FieldView
+	// HasHeader is true when the schema configures header widgets. Widgets
+	// then replaces the plain title.
+	HasHeader bool
+	Widgets   []WidgetView
+}
+
+// WidgetView is a header widget resolved against one entity's current values.
+type WidgetView struct {
+	Type schema.WidgetType
+	// Text is the tag or text content, and the accessible name of an icon.
+	Text  string
+	Icon  string
+	Class string
 }
 
 type PageData struct {
@@ -73,6 +113,12 @@ func NewPageData(store *session.Store, token string) PageData {
 			Collapsed: store.Collapsed(index),
 			Fields:    make([]FieldView, len(s.Fields)),
 		}
+		if s.Header != nil {
+			view := &data.Entities[index]
+			view.HasHeader = true
+			view.Widgets = ResolveWidgets(s.Header, entity)
+			view.Title = headerTitle(view.Widgets, id)
+		}
 		for fieldIndex, field := range s.Fields {
 			data.Entities[index].Fields[fieldIndex] = FieldView{
 				Field:   field,
@@ -90,6 +136,65 @@ func NewPageData(store *session.Store, token string) PageData {
 		}
 	}
 	return data
+}
+
+// ResolveWidgets reads each widget's source from the entity and returns what to
+// draw. A widget whose source has no value is left out, so it leaves no gap. An
+// icon or tag takes its look from the variant that matches the value exactly;
+// an icon with no matching variant gets the fallback icon.
+func ResolveWidgets(header *schema.Header, entity *yaml.Node) []WidgetView {
+	views := make([]WidgetView, 0, len(header.Widgets))
+	for _, widget := range header.Widgets {
+		value, ok, err := schema.HeaderValue(entity, widget.Source)
+		if err != nil || !ok {
+			continue
+		}
+		variant, matched := widget.Variants[value]
+		intent := variant.Intent
+		if intent == "" {
+			intent = schema.IntentNeutral
+		}
+		view := WidgetView{Type: widget.Type, Text: value}
+		switch widget.Type {
+		case schema.WidgetIcon:
+			view.Icon = icons.Fallback
+			if matched && variant.Icon != "" {
+				view.Icon = variant.Icon
+			}
+			view.Class = iconWidgetClass + iconIntentClass[intent]
+		case schema.WidgetTag:
+			view.Class = tagWidgetClass + tagIntentClass[intent]
+		default:
+			view.Class = textWidgetClass + textStyleClass(widget.Style)
+		}
+		views = append(views, view)
+	}
+	return views
+}
+
+func textStyleClass(style schema.Style) string {
+	classes := "font-normal"
+	if style.Bold {
+		classes = "font-semibold"
+	}
+	if style.Italic {
+		classes += " italic"
+	}
+	if style.Muted {
+		classes += " text-muted-foreground"
+	}
+	return classes
+}
+
+// headerTitle is the plain-text name of a card for screen readers and button
+// labels: the first text widget, or the identifier when there is none.
+func headerTitle(widgets []WidgetView, id string) string {
+	for _, widget := range widgets {
+		if widget.Type == schema.WidgetText {
+			return widget.Text
+		}
+	}
+	return id
 }
 
 func (data PageData) Entity(index int) EntityView {
@@ -150,7 +255,7 @@ func collapseLabel(entity EntityView) string {
 	return "Collapse " + entity.Title
 }
 
-func saveBarAttrs(oob bool) templ.Attributes {
+func oobAttrs(oob bool) templ.Attributes {
 	if oob {
 		return templ.Attributes{"hx-swap-oob": "true"}
 	}

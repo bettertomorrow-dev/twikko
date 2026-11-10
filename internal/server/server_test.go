@@ -168,3 +168,69 @@ func TestAssetsServeOnlyKnownFiles(t *testing.T) {
 		t.Errorf("icon content type: %q", got)
 	}
 }
+
+func headerServer(t *testing.T, header string) *Server {
+	t.Helper()
+	doc, err := schema.Parse([]byte(`
+schema:
+  id_field: key
+  header:
+` + header + `
+  fields:
+    - {name: key, type: text, readonly: true}
+    - {name: status, type: enum, options: [To Do, Done]}
+entities:
+  - {key: A-1, type: Bug, title: Fix login, status: To Do}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := New(session.New(doc), filepath.Join(t.TempDir(), "out.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	server.SetAllowedHost("127.0.0.1:1234")
+	return server
+}
+
+const testHeader = `    - {type: icon, source: type, variants: {Bug: {icon: bug, intent: danger}}}
+    - {type: tag, source: key}
+    - {type: text, source: title, style: {bold: true}}
+    - {type: tag, source: status, variants: {Done: {intent: success}}}`
+
+func TestHeaderWidgetsRenderInOrder(t *testing.T) {
+	server := headerServer(t, testHeader)
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/s/"+server.Token()+"/", nil))
+	body := response.Body.String()
+	last := -1
+	for _, want := range []string{`aria-label="Bug"`, "icons/bug.svg", ">A-1</span>", ">Fix login</span>", ">To Do</span>"} {
+		at := strings.Index(body, want)
+		if at < 0 || at < last {
+			t.Fatalf("%q missing or out of order in header: %s", want, body)
+		}
+		last = at
+	}
+	if !strings.Contains(body, "Collapse Fix login") {
+		t.Error("the toggle label must use the first text widget")
+	}
+}
+
+func TestHeaderFollowsEdits(t *testing.T) {
+	server := headerServer(t, testHeader)
+	edited := post(t, server, "/entities/0/fields/status", "value=Done")
+	if !strings.Contains(edited, `id="header-widgets-0"`) || !strings.Contains(edited, `hx-swap-oob="true"`) {
+		t.Fatalf("an edit must refresh the header out of band: %s", edited)
+	}
+	if !strings.Contains(edited, ">Done</span>") || !strings.Contains(edited, "bg-success/10") {
+		t.Fatalf("the status tag must show the new value: %s", edited)
+	}
+}
+
+func TestEditWithoutHeaderLeavesTitleAlone(t *testing.T) {
+	server := testServer(t)
+	edited := post(t, server, "/entities/0/fields/summary", "value=after")
+	if strings.Contains(edited, "header-widgets") {
+		t.Fatalf("a card without a header must not get header widgets: %s", edited)
+	}
+}
