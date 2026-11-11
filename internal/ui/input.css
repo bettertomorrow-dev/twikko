@@ -32,6 +32,13 @@
   /* Not part of shadcn: marks an edited field (Tailwind amber 500 / 800). */
   --changed: oklch(0.769 0.188 70.08);
   --changed-foreground: oklch(0.473 0.137 46.201);
+  /* Not part of shadcn: header intents (Tailwind 500 / 800 of blue, green, orange). */
+  --info: oklch(0.623 0.214 259.815);
+  --info-foreground: oklch(0.424 0.199 265.638);
+  --success: oklch(0.723 0.219 149.579);
+  --success-foreground: oklch(0.448 0.119 151.328);
+  --warning: oklch(0.705 0.213 47.604);
+  --warning-foreground: oklch(0.47 0.157 37.304);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -57,6 +64,13 @@
     /* Tailwind amber 400 / 300. */
     --changed: oklch(0.828 0.189 84.429);
     --changed-foreground: oklch(0.879 0.169 91.605);
+    /* Tailwind 400 / 300 of blue, green, orange. */
+    --info: oklch(0.707 0.165 254.624);
+    --info-foreground: oklch(0.809 0.105 251.813);
+    --success: oklch(0.792 0.209 151.711);
+    --success-foreground: oklch(0.871 0.15 154.449);
+    --warning: oklch(0.75 0.183 55.934);
+    --warning-foreground: oklch(0.837 0.128 66.29);
   }
 }
 
@@ -87,6 +101,12 @@
   --color-ring: var(--ring);
   --color-changed: var(--changed);
   --color-changed-foreground: var(--changed-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
 }
 
 @layer base {

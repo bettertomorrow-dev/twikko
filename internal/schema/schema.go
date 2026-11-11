@@ -21,6 +21,8 @@ const (
 	Enum      FieldType = "enum"
 	MultiEnum FieldType = "multienum"
 	Date      FieldType = "date"
+	Time      FieldType = "time"
+	DateTime  FieldType = "datetime"
 )
 
 type Field struct {
@@ -30,6 +32,9 @@ type Field struct {
 	Required bool      `yaml:"required,omitempty"`
 	Readonly bool      `yaml:"readonly,omitempty"`
 	Options  []string  `yaml:"options,omitempty"`
+	// Choices limit a text field to a list. It is set from the options of a select
+	// that overrides the field, so every way of editing it obeys the same list.
+	Choices []string `yaml:"-"`
 }
 
 type Schema struct {
@@ -37,8 +42,14 @@ type Schema struct {
 	// TitleField names an entity key whose value is the card title. The key
 	// need not be declared in Fields. Cards fall back to the identifier when
 	// it is unset or an entity lacks it.
-	TitleField string  `yaml:"title_field,omitempty"`
-	Fields     []Field `yaml:"fields"`
+	TitleField string `yaml:"title_field,omitempty"`
+	// Header replaces the title with widgets bound to entity data. It cannot be
+	// combined with TitleField.
+	Header *Header `yaml:"header,omitempty"`
+	// Body lays the fields out in rows and columns. Fields it does not place are
+	// not shown, but stay unchanged in the output.
+	Body   *Body   `yaml:"body,omitempty"`
+	Fields []Field `yaml:"fields"`
 }
 
 type Document struct {
@@ -72,6 +83,11 @@ func Parse(data []byte) (*Document, error) {
 	if err := schemaNode.Decode(&s); err != nil {
 		return nil, fmt.Errorf("decode schema: %w", err)
 	}
+	for i := range s.Fields {
+		if s.Fields[i].Label == "" {
+			s.Fields[i].Label = s.Fields[i].Name
+		}
+	}
 	if err := ValidateSchema(s); err != nil {
 		return nil, err
 	}
@@ -91,6 +107,11 @@ func Parse(data []byte) (*Document, error) {
 				return nil, fmt.Errorf("entity %d title field %q must be a scalar", i, s.TitleField)
 			}
 		}
+		for _, shown := range s.displayWidgets() {
+			if _, _, err := HeaderValue(entity, shown.widget.Source); err != nil {
+				return nil, fmt.Errorf("entity %d %s: %w", i, shown.where, err)
+			}
+		}
 		for _, field := range s.Fields {
 			if value := MapValue(entity, field.Name); value != nil {
 				if _, err := ParseNode(field, value); err != nil {
@@ -100,7 +121,23 @@ func Parse(data []byte) (*Document, error) {
 		}
 		entities[i] = Clone(entity)
 	}
+	if len(entities) > 0 {
+		for _, shown := range s.displayWidgets() {
+			if !shown.optional && !anyEntityHas(entities, shown.widget.Source) {
+				return nil, fmt.Errorf("%s: source %q matches no entity", shown.where, shown.widget.Source)
+			}
+		}
+	}
 	return &Document{Schema: s, Entities: entities}, nil
+}
+
+func anyEntityHas(entities []*yaml.Node, source string) bool {
+	for _, entity := range entities {
+		if _, ok, _ := HeaderValue(entity, source); ok {
+			return true
+		}
+	}
+	return false
 }
 
 func ValidateSchema(s Schema) error {
@@ -109,6 +146,9 @@ func ValidateSchema(s Schema) error {
 	}
 	if len(s.Fields) == 0 {
 		return errors.New("schema.fields is required")
+	}
+	if s.Header != nil && s.TitleField != "" {
+		return errors.New("schema.title_field cannot be combined with schema.header")
 	}
 	seen := make(map[string]bool)
 	idFound := false
@@ -124,7 +164,7 @@ func ValidateSchema(s Schema) error {
 			idFound = true
 		}
 		switch f.Type {
-		case Text, LongText, Number, Bool, Enum, MultiEnum, Date:
+		case Text, LongText, Number, Bool, Enum, MultiEnum, Date, Time, DateTime:
 		default:
 			return fmt.Errorf("field %q has unsupported type %q", f.Name, f.Type)
 		}
@@ -137,6 +177,91 @@ func ValidateSchema(s Schema) error {
 	}
 	if !idFound {
 		return fmt.Errorf("schema.id_field %q is not declared in schema.fields", s.IDField)
+	}
+	if s.Header != nil {
+		if err := ValidateHeader(s.Header, s.Fields); err != nil {
+			return err
+		}
+	}
+	if s.Body != nil {
+		if err := ValidateBody(s.Body, s.Fields); err != nil {
+			return err
+		}
+	}
+	return s.placeControls()
+}
+
+// locatedWidget is a widget with where it sits, for error messages.
+type locatedWidget struct {
+	where  string
+	widget Widget
+	// optional marks a widget of a built-in template, whose sources may be
+	// missing from every entity of a given input.
+	optional bool
+}
+
+func (s Schema) widgets() []locatedWidget {
+	var all []locatedWidget
+	if s.Header != nil {
+		for i, w := range s.Header.Widgets {
+			all = append(all, locatedWidget{where: fmt.Sprintf("header widget %d", i), widget: w})
+		}
+	}
+	if s.Body != nil {
+		for r, row := range s.Body.Rows {
+			for c, w := range row {
+				all = append(all, locatedWidget{
+					where:    fmt.Sprintf("body row %d cell %d", r+1, c+1),
+					widget:   w,
+					optional: s.Body.Template != "",
+				})
+			}
+		}
+	}
+	return all
+}
+
+// displayWidgets are the widgets that read entity data rather than edit a field.
+func (s Schema) displayWidgets() []locatedWidget {
+	var shown []locatedWidget
+	for _, w := range s.widgets() {
+		if !w.widget.IsControl() {
+			shown = append(shown, w)
+		}
+	}
+	return shown
+}
+
+// placeControls checks where controls sit. A field has at most one control
+// across header and body, so two controls never clash on one id and a select's
+// options can act as the field's own list of choices, which it then gets. A
+// body hides the fields no control places, so it may not hide a required field
+// the user could neither see nor fix.
+func (s Schema) placeControls() error {
+	placedAt := make(map[string]string)
+	index := make(map[string]int, len(s.Fields))
+	for i, f := range s.Fields {
+		index[f.Name] = i
+	}
+	for _, shown := range s.widgets() {
+		w := shown.widget
+		if !w.IsControl() {
+			continue
+		}
+		if at, ok := placedAt[w.Source]; ok {
+			return fmt.Errorf("%s: field %q is already placed by %s, and a field has one control", shown.where, w.Source, at)
+		}
+		placedAt[w.Source] = shown.where
+		if w.Type == WidgetSelect && s.Fields[index[w.Source]].Type == Text {
+			s.Fields[index[w.Source]].Choices = w.Options
+		}
+	}
+	if s.Body != nil {
+		for _, f := range s.Fields {
+			if _, ok := placedAt[f.Name]; f.Required && !f.Readonly && !ok {
+				return fmt.Errorf("required field %q is not placed in schema.body, so it would be hidden", f.Name)
+			}
+		}
 	}
 	return nil
 }
@@ -156,6 +281,9 @@ func ParseFormValue(field Field, values []string, present bool) (any, error) {
 	}
 	switch field.Type {
 	case Text, LongText:
+		if len(field.Choices) != 0 && values[0] != "" && !contains(field.Choices, values[0]) {
+			return nil, fmt.Errorf("must be one of: %s", strings.Join(field.Choices, ", "))
+		}
 		return values[0], nil
 	case Number:
 		if values[0] == "" {
@@ -172,16 +300,11 @@ func ParseFormValue(field Field, values []string, present bool) (any, error) {
 	case Bool:
 		return values[0] == "on" || values[0] == "true", nil
 	case Date:
-		if values[0] == "" {
-			if field.Required {
-				return nil, errors.New("is required")
-			}
-			return "", nil
-		}
-		if _, err := time.Parse("2006-01-02", values[0]); err != nil {
-			return nil, errors.New("must be a valid date")
-		}
-		return values[0], nil
+		return parseTemporal(field, values[0], "must be a valid date", "2006-01-02")
+	case Time:
+		return parseTemporal(field, values[0], "must be a time such as 14:30", "15:04", "15:04:05")
+	case DateTime:
+		return parseTemporal(field, values[0], "must be a date and time such as 2026-10-20T14:30", "2006-01-02T15:04", "2006-01-02T15:04:05")
 	case Enum:
 		if !contains(field.Options, values[0]) {
 			return nil, fmt.Errorf("must be one of: %s", strings.Join(field.Options, ", "))
@@ -197,6 +320,21 @@ func ParseFormValue(field Field, values []string, present bool) (any, error) {
 	default:
 		return nil, fmt.Errorf("unsupported field type %q", field.Type)
 	}
+}
+
+func parseTemporal(field Field, value, message string, layouts ...string) (any, error) {
+	if value == "" {
+		if field.Required {
+			return nil, errors.New("is required")
+		}
+		return "", nil
+	}
+	for _, layout := range layouts {
+		if _, err := time.Parse(layout, value); err == nil {
+			return value, nil
+		}
+	}
+	return nil, errors.New(message)
 }
 
 func ParseNode(field Field, node *yaml.Node) (any, error) {

@@ -1,10 +1,29 @@
-# Two Jira-style issues. `key` identifies each entity. `card_title` is the card
-# header text (see `title_field`). Neither `card_title` nor `url` is in
-# `fields`, so the user cannot edit them, and both come back unchanged in the
-# output.
+# Two Jira-style issues. `key` identifies each entity. `header` draws the card
+# header from entity data: an icon from `type`, a tag from `key`, the `summary`
+# in bold, and a tag from `status`, which follows the user's edits. `type` and
+# `url` are not in `fields`, so the user cannot edit them, and both come back
+# unchanged in the output.
 schema:
   id_field: key
-  title_field: card_title
+  header:
+    - type: icon
+      source: type
+      variants:
+        Bug: { icon: bug, intent: danger }
+        Task: { icon: checkbox, intent: info }
+    - { type: tag, source: key }
+    - type: text
+      source: summary
+      style: { bold: true }
+    - { source: status }      # a control: the enum field picks a select
+  body:
+    - - { source: summary }
+    - - { source: description }
+    - - { source: labels }
+      - { source: points }
+    - - { source: due }
+      - { source: review_at }
+      - { type: toggle, source: blocked, label: Blocked }
   fields:
     - name: key
       label: Issue
@@ -25,21 +44,24 @@ schema:
       type: number
     - name: due
       type: date
+    - name: review_at
+      type: datetime
     - name: blocked
       type: bool
 entities:
   - key: PROJ-1
-    card_title: "PROJ-1 · Fix login"
+    type: Bug
     summary: Fix login
     description: Users cannot sign in after resetting a password.
     status: To Do
     labels: [bug]
     points: 3
     due: 2026-10-20
+    review_at: 2026-10-29T15:30
     blocked: false
     url: https://jira.example.test/browse/PROJ-1
   - key: PROJ-2
-    card_title: "PROJ-2 · Add CSV export"
+    type: Task
     summary: Add CSV export
     status: In Progress
     labels: [ui]

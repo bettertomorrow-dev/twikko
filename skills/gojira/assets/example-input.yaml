@@ -1,0 +1,56 @@
+# Two pulled tickets. `key` identifies each entity. The built-in `gojira` header
+# template draws the type icon, key, title and status in the card header from
+# the `type`, `key`, `title` and `status` entity keys. The built-in `gojira`
+# body template shows creator, assignee, created, due and summary as text. Every
+# field is read-only. `assignee` and `due` are left out of a ticket that has no
+# value.
+schema:
+  id_field: key
+  header: { template: gojira }
+  body: { template: gojira }
+  fields:
+    - name: key
+      label: ID
+      type: text
+      readonly: true
+    - name: title
+      type: text
+      readonly: true
+    - name: type
+      type: text
+      readonly: true
+    - name: creator
+      type: text
+      readonly: true
+    - name: created
+      type: date
+      readonly: true
+    - name: due
+      type: date
+      readonly: true
+    - name: assignee
+      type: text
+      readonly: true
+    - name: status
+      type: text
+      readonly: true
+    - name: summary
+      type: longtext
+      readonly: true
+entities:
+  - key: PROJ-101
+    title: Login fails after password reset
+    type: Bug
+    creator: Dana Whitfield
+    created: 2026-10-14
+    due: 2026-11-20
+    assignee: Sam Okoye
+    status: In Progress
+    summary: Users cannot sign in right after resetting their password. The reset token is probably not invalidated, so the session keeps the old credentials.
+  - key: PROJ-102
+    title: "Add row numbers to import errors"
+    type: Task
+    creator: Sam Okoye
+    created: 2026-10-19
+    status: To Do
+    summary: No description.

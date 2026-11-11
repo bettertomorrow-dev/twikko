@@ -121,12 +121,94 @@ The input has `schema` and `entities` keys.
 does not have to be declared in `schema.fields`, so it is not an input and the
 user cannot edit it. A title value must be a scalar. A card falls back to the
 identifier when `title_field` is unset or the entity has no value for it.
+
+The optional `schema.header` replaces the plain title with a list of widgets.
+It cannot be combined with `title_field`. Each widget has:
+
+- `type`: a display widget `icon`, `tag`, or `text`, or a control. See
+  "Widgets" below.
+- `source`. For a display widget, an entity key or a dotted path into nested
+  mappings, which must hold a scalar. It may name a key the schema does not
+  declare. An entity with no value at the source leaves the widget empty, and
+  an empty header widget leaves no gap. A source found in no entity fails the
+  load, because it is almost certainly a typo.
+- `variants`, for `icon` and `tag`: a map from a value, matched exactly, to
+  `intent` and, for icons only, `icon`. `intent` is `neutral` (the default),
+  `info`, `success`, `warning`, or `danger`. An icon whose value matches no
+  variant draws `square-rotated` in the neutral intent.
+- `style`, for `text`: `bold`, `italic`, `muted`. The set is closed because
+  Tailwind needs every class spelled out at build time.
+
+`header: { template: <name> }` selects a widget list built into the binary,
+for example `gojira` for tickets pulled by the gojira skill. A template cannot
+be extended. An unknown template name or icon name fails the load and the
+error lists the valid ones. Unknown keys in a widget fail the load too.
+
+The optional `schema.body` lays the card body out in rows. It is a list of rows,
+each a list of one to four widgets, with at most ten rows. A row's widgets
+share its width equally. A body widget has the same keys and rules as a header
+widget (see "Widgets"). A display widget with no value stays an empty slot so
+columns do not shift between cards, and a row with no content at all is hidden.
+A body `text` widget wraps and keeps line breaks.
+
+A schema field that no control places is not shown once a body is set. It stays
+in the output unchanged. The load fails when a field has two controls, when a
+layout breaks a limit, when a display source is found in no entity, and when a
+required, editable field would be hidden, because it could block Save with no
+visible cause. `body: { template: <name> }` selects a layout built into the
+binary, for example `gojira`. A template's sources are optional, so the "found
+in no entity" check skips it. Without `schema.body`, every field that no header
+control edits shows in a two-column grid in schema order.
+
+### Widgets
+
+A widget is one piece of the card header or body. Its keys are `type`, `source`,
+`label`, `options`, `variants`, and `style`. Unknown keys fail the load.
+
+A display widget is `icon`, `tag`, or `text`. It is read-only and follows the
+current values. `variants` map a value to an `intent`, and for icons to an
+`icon`. `style` applies to `text`. A display widget shows `label` as a caption
+in the body and as a muted prefix in the header.
+
+A control edits one field, and `source` names a field declared in
+`schema.fields`. `type: control`, which is also the default when `type` is
+omitted, draws the control that fits the field's data type. Naming a control
+type overrides that, so a tailored case can ask for another control:
+
+| Field type | `control` draws | Types that may override it |
+| --- | --- | --- |
+| `text` | `input` | `textarea`, `select` |
+| `longtext` | `textarea` | `input` |
+| `number` | `number` | none |
+| `bool` | `toggle` | none |
+| `enum` | `select` | none |
+| `multienum` | `multiselect` | none |
+| `date`, `time`, `datetime` | `date`, `time`, `datetime` | none |
+
+An override only changes how the same kind of value is drawn. A control that
+does not fit the field type fails the load, and the error lists the controls
+that do. A `select` over a `text` field needs `options` on the widget, and the
+field then accepts only those values, or empty when not required. The server
+enforces that on direct requests too. `options` is rejected anywhere else, since
+an `enum` field has its own. `variants` and `style` are rejected on a control.
+
+`label` replaces the field label above a control in the body. A `toggle` shows
+it to the right of the switch, and it is optional: without it the switch shows
+no text, and the field label stays its accessible name. In the header a control
+shows no visible label and uses it as its tooltip and accessible name, except
+a toggle, which shows its label.
+
+A field has at most one control across header and body. A control in the
+header works while the card is collapsed.
+
+`time` is `HH:MM` and `datetime` is `YYYY-MM-DDTHH:MM`, with seconds accepted,
+and no time zone. Both are stored as written.
 `schema.fields` defines every editable or displayed field. Field definitions contain:
 
 - `name`, the key in an entity object.
 - `label`, the UI label. If absent, use `name`.
-- `type`, one of `text`, `longtext`, `number`, `bool`, `enum`, `multienum`, or
-  `date`.
+- `type`, one of `text`, `longtext`, `number`, `bool`, `enum`, `multienum`,
+  `date`, `time`, or `datetime`.
 - `required`, optional and false by default.
 - `readonly`, optional and false by default.
 - `options`, required for `enum` and `multienum`, and forbidden for other
@@ -210,25 +292,38 @@ target directory and renaming it to `--output`.
 ## UI requirements
 
 - Render one card for each entity.
-- Show the card title in each card header: the `title_field` value, or the
-  identifier when there is none.
+- Show the card title in each card header: the `header` widgets, else the
+  `title_field` value, else the identifier.
 - Put an eye toggle button at the left of the card header, before the title.
   An open eye means the card is expanded and a crossed eye means it is
   collapsed. Pressing it collapses or expands the card. A collapsed card shows
   a changed-field count and a validation-error marker in the header, so a hidden
   edit or error is not lost. The collapsed state lives in session memory and is
   not written to the output.
+- Place header widgets left-aligned between the eye toggle and the ellipsis
+  menu, with an equal gap. A text widget truncates when space runs out. Widgets
+  show the current values, so editing a field refreshes the widgets bound to
+  it without a reload. An icon-only widget carries its value as an accessible
+  name and tooltip. A collapsed card keeps its changed-count and error markers
+  after the widgets.
+- Lay the body out in the rows and columns of `schema.body`. Below the `md`
+  breakpoint every row stacks to one column. Without `schema.body`, show every
+  field that no header control edits in a two-column grid.
+- Draw a header control at the same height as the other widgets, with no
+  visible label, and show a validation error under it. The changed-count and
+  error badges of a collapsed card refresh after an edit in a header control.
 - Put card actions in an ellipsis menu at the right of the header. The menu
   holds "Reset", which restores the card to its input values and keeps its
   collapsed state. More actions will join it later.
-- Render a control that matches the field type:
+- Render a control that matches the field type, unless the widget names another
+  that fits it:
   - `text`: single-line input.
   - `longtext`: textarea.
   - `number`: numeric input.
-  - `bool`: checkbox.
+  - `bool`: on/off switch, with the widget label to its right when given.
   - `enum`: select.
   - `multienum`: checkbox group or another accessible multi-select control.
-  - `date`: date input.
+  - `date`, `time`, `datetime`: date, time, and date-time inputs.
 - Render read-only values without allowing mutation.
 - Mark fields whose value differs from the input.
 - Display a global count of changed fields or entities.
@@ -317,6 +412,183 @@ Feature: edit YAML entities locally
     Then the CLI prints a URL on 127.0.0.1
     And the browser displays one card for each entity
     And each field uses the control selected by its schema type
+
+  Scenario: 1 - A card header combines several pieces of ticket data
+    Given an input that asks for a ticket type icon, the ticket id, and the title in the header
+    When the user opens the editor
+    Then each card shows the icon, the id and the title side by side between the eye toggle and the actions menu
+
+  Scenario: 2 - A value maps to an icon and colour
+    Given an input that maps the type "Bug" to a red bug icon
+    When the user opens the editor
+    Then a bug ticket shows a red bug icon
+    And a ticket of an unmapped type shows a neutral diamond icon
+
+  Scenario: 3 - A header piece with no data is skipped
+    Given a ticket without a due date and a header that shows the due date
+    When the user opens the editor
+    Then that ticket's header shows no due date and no empty gap
+
+  Scenario: 4 - The header follows edits
+    Given a header that shows a ticket's status
+    When the user changes the status field
+    Then the header shows the new status without a page reload
+
+  Scenario: 5 - An input with no header settings looks as before
+    Given an input without header settings
+    When the user opens the editor
+    Then each card shows its title as it does today
+
+  Scenario: 6 - A misconfigured header is rejected
+    Given an input whose header refers to an unknown widget, icon, or template
+    When the agent starts the editor
+    Then the editor refuses to start and names the problem and the valid choices
+
+  Scenario: 7 - An agent picks a ready-made header by name
+    Given an input that selects a built-in header template
+    When the user opens the editor
+    Then the cards show the header that template defines
+
+  Scenario: 8 - Fields appear in the rows and columns the input asks for
+    Given an input that puts the summary alone in the first row and created and due side by side in the second
+    When the user opens the editor
+    Then each card shows the summary across the full width
+    And created and due share the next row in equal halves
+
+  Scenario: 9 - A row can hold up to four columns
+    Given an input with a row of four fields
+    When the user opens the editor
+    Then the four fields share that row in equal quarters
+
+  Scenario: 10 - Fields the layout leaves out are not shown but are kept
+    Given an input whose layout does not place the assignee
+    When the user edits a card and saves
+    Then the card does not show the assignee
+    And the saved result still holds the original assignee
+
+  Scenario: 11 - A cell can present data without editing it
+    Given an input that shows the creator as plain text with the caption "Creator"
+    When the user opens the editor
+    Then the card shows "Creator" and the name as text, with nothing to type into
+
+  Scenario: 12 - A cell can show a status as a tag
+    Given an input that shows the status as a tag in the body
+    When the user opens the editor
+    Then the card shows the status as a coloured tag
+
+  Scenario: 13 - Presented data follows edits
+    Given a layout that edits the status in one cell and shows the status as a tag in another
+    When the user changes the status
+    Then the tag shows the new status without a page reload
+    And the control the user is typing in keeps focus
+
+  Scenario: 14 - A cell caption replaces the field name
+    Given a layout whose cell is captioned "Due date" for a field named "due"
+    When the user opens the editor
+    Then the card labels that control "Due date"
+
+  Scenario: 15 - A missing value does not shift the columns
+    Given a layout that shows creator and due side by side
+    And a ticket without a due date
+    When the user opens the editor
+    Then that ticket's due slot is blank and the creator stays in the first column
+
+  Scenario: 16 - An input without a layout looks as before
+    Given an input without layout settings
+    When the user opens the editor
+    Then every card shows all fields in the usual two-column grid
+
+  Scenario: 17 - A layout that breaks the limits is rejected
+    Given a layout with more than ten rows, a row with five cells, or an empty row
+    When the agent starts the editor
+    Then the editor refuses to start and says which row is wrong
+
+  Scenario: 18 - A layout that cannot work is rejected
+    Given a layout that names an unknown field, places a field twice, or leaves out a required editable field
+    When the agent starts the editor
+    Then the editor refuses to start and names the field
+
+  Scenario: 19 - An agent picks a ready-made layout by name
+    Given an input that selects a built-in body layout
+    When the user opens the editor
+    Then the cards show the layout that template defines
+
+  Scenario: 20 - An unknown layout name is rejected with the choices
+    Given an input that selects a layout name that does not exist
+    When the agent starts the editor
+    Then the editor refuses to start and lists the available layouts
+
+  Scenario: 21 - A control matches the kind of data
+    Given an input with a short text, a long text, a number, a yes/no value, a choice, a date, a time and a date-time
+    When the user opens the editor
+    Then each is edited with the control that fits it: a text box, a large text area, a number box, an on/off switch, a drop-down, and date, time and date-time pickers
+
+  Scenario: 22 - An input can ask for a different control
+    Given an input that asks for a short text to be edited in a large text area
+    When the user opens the editor
+    Then that field is edited in a large text area
+
+  Scenario: 23 - A text field can become a choice from a given list
+    Given an input that offers the choices "Backend" and "Frontend" for a text field
+    When the user opens the editor
+    Then the field is a drop-down with those two choices
+
+  Scenario: 24 - A value outside the offered choices is refused
+    Given a text field that offers only "Backend" and "Frontend"
+    When a client submits "Ops" for that field
+    Then the server reports a field-level error and does not accept the value
+
+  Scenario: 25 - An on/off switch shows an optional label to its right
+    Given an input with a switch labelled "Blocked" and another switch without a label
+    When the user opens the editor
+    Then the first switch shows "Blocked" to its right
+    And the second shows no text
+
+  Scenario: 26 - Controls can sit in the card header
+    Given an input that puts the status control and the ticket id in the header
+    When the user opens the editor
+    Then the header shows the id and a working status control between the eye toggle and the actions menu
+
+  Scenario: 27 - A header control works while the card is collapsed
+    Given a collapsed card with a status control in its header
+    When the user changes the status
+    Then the card shows that one field changed, without expanding
+
+  Scenario: 28 - A field shown in the header is not repeated in the body grid
+    Given an input with a status control in the header and no body layout
+    When the user opens the editor
+    Then the status is edited once, in the header, and is absent from the grid below
+
+  Scenario: 29 - One field cannot have two controls
+    Given an input that places the same field in the header and in the body
+    When the agent starts the editor
+    Then the editor refuses to start and names the field
+
+  Scenario: 30 - Presented data follows edits made in any control
+    Given a header tag and a body caption that show the status, and a control that edits it in the header
+    When the user changes the status
+    Then the tag and the caption show the new status without a reload
+    And the control keeps focus
+
+  Scenario: 31 - A control that does not fit the data is rejected
+    Given an input that asks for a number field to be edited in a large text area
+    When the agent starts the editor
+    Then the editor refuses to start and lists the controls that fit a number
+
+  Scenario: 32 - A text field offered as a drop-down needs its choices
+    Given an input that asks for a text field to be a drop-down without giving choices
+    When the agent starts the editor
+    Then the editor refuses to start and says the choices are missing
+
+  Scenario: 33 - Time and date-time values are checked
+    Given a time field and a date-time field
+    When a client submits "25:99" and "yesterday"
+    Then the server reports a field-level error for each
+
+  Scenario: 34 - Existing inputs keep working
+    Given an input written for the previous layout settings, with display widgets and fields in rows
+    When the user opens the editor
+    Then the cards look and behave as before
 
   Scenario: Save valid changes
     Given the editor is open with valid entities
