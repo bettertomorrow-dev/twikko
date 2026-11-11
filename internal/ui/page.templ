@@ -12,7 +12,7 @@ templ Page(data PageData) {
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
-			<title>multieditor</title>
+			<title>{ data.Title }</title>
 			<script src={ templ.SafeURL(data.AssetBase + "htmx.min.js") }></script>
 			<script src={ templ.SafeURL(data.AssetBase + "app.js") } defer></script>
 			<link rel="stylesheet" href={ templ.SafeURL(data.AssetBase + "styles.css") }/>
@@ -20,14 +20,17 @@ templ Page(data PageData) {
 		<body>
 			<main class="mx-auto max-w-5xl px-4 py-8 pb-32">
 				<header class="mb-6">
-					<h1 class="text-2xl font-semibold tracking-tight">Edit entities</h1>
-					<p class="mt-1 text-sm text-muted-foreground">Review the fields below, then save the complete result.</p>
+					<h1 class="text-2xl font-semibold tracking-tight">{ data.Title }</h1>
+					if data.Description != "" {
+						<p class="mt-1 whitespace-pre-line text-sm text-muted-foreground">{ data.Description }</p>
+					}
 				</header>
 				<div id="entities" class="space-y-5">
 					for _, entity := range data.Entities {
 						@EntityCard(data, entity)
 					}
 				</div>
+				<footer class="mt-12 text-center text-xs text-muted-foreground/60 select-none">a Multieditor, 2026</footer>
 			</main>
 			@SaveBar(data, false)
 		</body>

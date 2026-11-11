@@ -20,6 +20,8 @@ type Change struct {
 
 type Store struct {
 	mu        sync.RWMutex
+	title     string
+	desc      string
 	schema    schema.Schema
 	original  []*yaml.Node
 	current   []*yaml.Node
@@ -30,6 +32,8 @@ type Store struct {
 func New(doc *schema.Document) *Store {
 	original := cloneEntities(doc.Entities)
 	store := &Store{
+		title:     doc.Title,
+		desc:      doc.Description,
 		schema:    doc.Schema,
 		original:  original,
 		current:   cloneEntities(doc.Entities),
@@ -39,6 +43,11 @@ func New(doc *schema.Document) *Store {
 	store.validateAll()
 	return store
 }
+
+// Title and Description are the optional heading of the page.
+func (s *Store) Title() string { return s.title }
+
+func (s *Store) Description() string { return s.desc }
 
 func (s *Store) Schema() schema.Schema {
 	return s.schema

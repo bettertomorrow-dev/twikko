@@ -1,3 +1,5 @@
+title: Manual test entities
+description: Invented records that cover every field type, for trying the editor by hand.
 schema:
   id_field: key
   fields:

@@ -479,3 +479,34 @@ func TestLinesRenderAsSeparators(t *testing.T) {
 		}
 	}
 }
+
+func TestPageHeadingAndFooter(t *testing.T) {
+	doc, err := schema.Parse([]byte(`
+title: Release notes
+description: Entries for the 2.1 release.
+schema:
+  id_field: key
+  fields:
+    - {name: key, type: text}
+entities: [{key: A-1}]
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := New(session.New(doc), filepath.Join(t.TempDir(), "out.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	server.SetAllowedHost("127.0.0.1:1234")
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/s/"+server.token+"/", nil))
+	body := response.Body.String()
+	for _, want := range []string{"<title>Release notes</title>", ">Release notes</h1>", "Entries for the 2.1 release.", "a Multieditor, 2026"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+	if strings.Contains(body, "Review the fields below") {
+		t.Error("page keeps the old instruction")
+	}
+}

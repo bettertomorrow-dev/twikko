@@ -4,6 +4,8 @@
 # body template shows creator, assignee, created, due and summary as text. Every
 # field is read-only. `assignee` and `due` are left out of a ticket that has no
 # value.
+title: Tickets from sprint 14
+description: Two tickets pulled with the JQL `project = PROJ AND sprint = 14`.
 schema:
   id_field: key
   header: { template: gojira }

@@ -4,6 +4,8 @@
 # a schema field: leave `type` out and the field's type picks the control, or
 # name one to override it. Lines (hline, vline) separate widgets and do not count
 # against the row and column limits.
+title: Sprint 14 ticket cleanup
+description: Invented tickets of the example project PROJ, one of each type, used to try every widget and control.
 schema:
   id_field: key
   header:
