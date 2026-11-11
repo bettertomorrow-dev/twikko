@@ -3,6 +3,7 @@ package server
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -219,7 +220,7 @@ func TestHeaderWidgetsRenderInOrder(t *testing.T) {
 func TestHeaderFollowsEdits(t *testing.T) {
 	server := headerServer(t, testHeader)
 	edited := post(t, server, "/entities/0/fields/status", "value=Done")
-	if !strings.Contains(edited, `id="header-widgets-0"`) || !strings.Contains(edited, `hx-swap-oob="true"`) {
+	if !strings.Contains(edited, `id="widget-0-h-3"`) || !strings.Contains(edited, `hx-swap-oob="true"`) {
 		t.Fatalf("an edit must refresh the header out of band: %s", edited)
 	}
 	if !strings.Contains(edited, ">Done</span>") || !strings.Contains(edited, "bg-success/10") {
@@ -230,7 +231,227 @@ func TestHeaderFollowsEdits(t *testing.T) {
 func TestEditWithoutHeaderLeavesTitleAlone(t *testing.T) {
 	server := testServer(t)
 	edited := post(t, server, "/entities/0/fields/summary", "value=after")
-	if strings.Contains(edited, "header-widgets") {
+	if strings.Contains(edited, "widget-0-") {
 		t.Fatalf("a card without a header must not get header widgets: %s", edited)
+	}
+}
+
+func bodyServer(t *testing.T, body string) *Server {
+	t.Helper()
+	doc, err := schema.Parse([]byte(`
+schema:
+  id_field: key
+  body:
+` + body + `
+  fields:
+    - {name: key, type: text, readonly: true}
+    - {name: summary, type: longtext}
+    - {name: owner, type: text}
+    - {name: status, type: enum, options: [To Do, Done]}
+entities:
+  - {key: A-1, summary: Fix login, owner: Dana, status: To Do}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := New(session.New(doc), filepath.Join(t.TempDir(), "out.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	server.SetAllowedHost("127.0.0.1:1234")
+	return server
+}
+
+const testBody = `
+    - - {type: text, source: summary, label: What}
+    - - {source: status, label: State}
+      - {type: tag, source: status, label: Now, variants: {Done: {intent: success}}}
+`
+
+func get(t *testing.T, server *Server) string {
+	t.Helper()
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/s/"+server.Token()+"/", nil))
+	return response.Body.String()
+}
+
+func TestBodyRendersRowsAndHidesUnplacedFields(t *testing.T) {
+	body := get(t, bodyServer(t, testBody))
+	last := -1
+	for _, want := range []string{">What</span>", ">Fix login</span>", "State", `id="field-0-status"`, ">Now</span>", ">To Do</span>"} {
+		at := strings.Index(body, want)
+		if at < 0 || at < last {
+			t.Fatalf("%q missing or out of order in body: %s", want, body)
+		}
+		last = at
+	}
+	for _, hidden := range []string{`id="field-0-owner"`, `id="field-0-summary"`, `id="field-0-key"`} {
+		if strings.Contains(body, hidden) {
+			t.Errorf("an unplaced field must not render: %s", hidden)
+		}
+	}
+}
+
+func TestBodyDisplayCellsFollowEditsAndControlsStay(t *testing.T) {
+	server := bodyServer(t, testBody)
+	edited := post(t, server, "/entities/0/fields/status", "value=Done")
+	if !strings.Contains(edited, `id="widget-0-1-1"`) || !strings.Contains(edited, `hx-swap-oob="true"`) {
+		t.Fatalf("an edit must refresh display cells out of band: %s", edited)
+	}
+	if !strings.Contains(edited, ">Done</span>") || !strings.Contains(edited, "bg-success/10") {
+		t.Fatalf("the tag must show the new status: %s", edited)
+	}
+	if strings.Contains(edited, `id="field-0-status"`) {
+		t.Fatalf("the control being edited must not be re-rendered: %s", edited)
+	}
+}
+
+func TestBodyEditOfHiddenFieldIsStillRefusedWhenReadonly(t *testing.T) {
+	server := bodyServer(t, testBody)
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/s/"+server.Token()+"/entities/0/fields/key", strings.NewReader("value=B-9"))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.Host = "127.0.0.1:1234"
+	server.ServeHTTP(response, request)
+	if response.Code == http.StatusOK {
+		t.Fatalf("a read-only field must stay read-only: %s", response.Body.String())
+	}
+}
+
+func TestBodyKeepsHiddenFieldsInTheOutput(t *testing.T) {
+	server := bodyServer(t, testBody)
+	post(t, server, "/entities/0/fields/status", "value=Done")
+	post(t, server, "/save", "")
+	event := <-server.Done()
+	if event.Err != nil || event.Status != "saved" {
+		t.Fatalf("unexpected event: %#v", event)
+	}
+	data, err := os.ReadFile(server.outputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "owner: Dana") {
+		t.Fatalf("a hidden field must stay in the output: %s", data)
+	}
+}
+
+func TestEditWithoutBodyHasNoDisplayCells(t *testing.T) {
+	server := testServer(t)
+	if edited := post(t, server, "/entities/0/fields/summary", "value=after"); strings.Contains(edited, "widget-0-") {
+		t.Fatalf("a card without a body must get no display cells: %s", edited)
+	}
+}
+
+func controlServer(t *testing.T, layout string) *Server {
+	t.Helper()
+	doc, err := schema.Parse([]byte(`
+schema:
+  id_field: key
+` + layout + `
+  fields:
+    - {name: key, type: text, readonly: true}
+    - {name: team, type: text}
+    - {name: notes, type: text}
+    - {name: blocked, type: bool}
+    - {name: at, type: time}
+    - {name: when, type: datetime}
+    - {name: status, type: enum, options: [To Do, Done]}
+entities:
+  - {key: A-1, team: Backend, notes: hi, blocked: false, at: "14:30", when: 2026-10-20T14:30, status: To Do}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := New(session.New(doc), filepath.Join(t.TempDir(), "out.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	server.SetAllowedHost("127.0.0.1:1234")
+	return server
+}
+
+const controlLayout = `  header:
+    - {type: tag, source: key}
+    - {source: status}
+    - {type: tag, source: status, label: Now}
+  body:
+    - - {type: select, source: team, options: [Backend, Frontend]}
+      - {type: textarea, source: notes}
+    - - {type: toggle, source: blocked, label: Blocked}
+      - {source: at}
+      - {source: when}
+`
+
+func TestEachControlKindRenders(t *testing.T) {
+	page := get(t, controlServer(t, controlLayout))
+	for _, want := range []string{
+		`<select id="field-0-status"`, `<select id="field-0-team"`, `<textarea id="field-0-notes"`,
+		`type="checkbox" role="switch"`, ">Blocked</span>", `type="time"`, `type="datetime-local"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+	if !strings.Contains(page, `aria-label="status"`) || strings.Contains(page, `for="field-0-status"`) {
+		t.Error("a header control carries its label as an accessible name and shows no label element")
+	}
+	if !strings.Contains(page, `for="field-0-team"`) {
+		t.Error("a body control shows its label")
+	}
+}
+
+func TestHeaderControlEditsAndLeavesItselfAlone(t *testing.T) {
+	server := controlServer(t, controlLayout)
+	edited := post(t, server, "/entities/0/fields/status", "value=Done")
+	if strings.Contains(edited, `id="field-0-status"`) {
+		t.Fatalf("the control being edited must not be re-rendered: %s", edited)
+	}
+	for _, want := range []string{`id="entity-badges-0"`, `id="widget-0-h-2"`, ">Done</span>", `id="save-bar"`} {
+		if !strings.Contains(edited, want) {
+			t.Errorf("edit response lacks %q: %s", want, edited)
+		}
+	}
+}
+
+func TestCollapsedCardBadgeFollowsAHeaderEdit(t *testing.T) {
+	server := controlServer(t, controlLayout)
+	post(t, server, "/entities/0/collapsed", "collapsed=true")
+	edited := post(t, server, "/entities/0/fields/status", "value=Done")
+	if !strings.Contains(edited, "1 changed") {
+		t.Fatalf("the badge must show the change without expanding: %s", edited)
+	}
+}
+
+func TestSelectOverTextRefusesOtherValues(t *testing.T) {
+	server := controlServer(t, controlLayout)
+	edited := post(t, server, "/entities/0/fields/team", "value=Ops")
+	if !strings.Contains(edited, "must be one of: Backend, Frontend") {
+		t.Fatalf("a value outside the options must be refused: %s", edited)
+	}
+	if ok := post(t, server, "/entities/0/fields/team", "value=Frontend"); strings.Contains(ok, "must be one of") {
+		t.Fatalf("an offered value must be accepted: %s", ok)
+	}
+}
+
+func TestToggleSwitchesOnAndOff(t *testing.T) {
+	server := controlServer(t, controlLayout)
+	if on := post(t, server, "/entities/0/fields/blocked", "value=on"); !strings.Contains(on, "Changed") {
+		t.Fatalf("turning the switch on is a change: %s", on)
+	}
+	if off := post(t, server, "/entities/0/fields/blocked", ""); strings.Contains(off, "Changed") {
+		t.Fatalf("turning it back off restores the input value: %s", off)
+	}
+}
+
+func TestTimeAndDateTimeAreValidated(t *testing.T) {
+	server := controlServer(t, controlLayout)
+	if bad := post(t, server, "/entities/0/fields/at", "value=25%3A99"); !strings.Contains(bad, "must be a time") {
+		t.Fatalf("a bad time must be refused: %s", bad)
+	}
+	if bad := post(t, server, "/entities/0/fields/when", "value=yesterday"); !strings.Contains(bad, "must be a date and time") {
+		t.Fatalf("a bad date-time must be refused: %s", bad)
+	}
+	if ok := post(t, server, "/entities/0/fields/when", "value=2026-10-21T09%3A15"); strings.Contains(ok, "must be") {
+		t.Fatalf("a good date-time must be accepted: %s", ok)
 	}
 }

@@ -67,8 +67,9 @@ resuming its work.
   sets a CSS mask, so no icon path data lives in a template. To add an icon, add
   its name to `TABLER_ICONS` in the Makefile and run `make vendor`. The
   embedded files are also the list of valid icon names for header widgets.
-- Header widget classes live in `internal/ui/data.go` as full class strings, so
-  Tailwind finds them. Never build a class name from a YAML value.
+- Header widget and body row classes live in `internal/ui/data.go` as full
+  class strings, so Tailwind finds them. Never build a class name from a YAML
+  value.
 - Embed generated templates and static assets into one binary with `go:embed`.
 - Bind the server to `127.0.0.1` only. It must run only for the editing
   session.
@@ -82,6 +83,15 @@ resuming its work.
   the eye toggle and the ellipsis menu, left-aligned with an equal gap. A widget
   with no value is skipped. Widgets read the current values, so editing a field
   refreshes the widgets bound to it.
+- Header and body hold the same widgets. A display widget shows a value. A
+  control edits a field, with the control picked from the field's data type
+  unless the widget names another that fits it. A field has one control across
+  header and body.
+- Lay the card body out in the rows and columns of the schema's `body` (one to
+  four widgets per row, up to ten rows, equal widths, one column on a narrow
+  screen), else a two-column grid of every field that no header control edits.
+  Fields a body does not place are hidden but kept in the output. Display
+  widgets refresh on edits without re-rendering a control.
 - Put an eye toggle at the header's top left. An open eye means the card is
   expanded, a crossed eye means it is collapsed. Pressing it flips the state.
 - Put card actions, currently only Reset, in an ellipsis dropdown at the right

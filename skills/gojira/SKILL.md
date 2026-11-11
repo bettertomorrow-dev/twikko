@@ -43,6 +43,8 @@ One entity per ticket, one key per row:
 
 The card header comes from `header: { template: gojira }` under `schema`, a template built into `multieditor`. It draws an icon for `type`, a tag for `key`, the `title` in bold, and a tag for `status`. It reads exactly those four keys, so keep their names. Do not write `title_field` or a `card_title` key, and do not write widgets yourself. A type or status the template does not know gets a fallback icon or a neutral tag.
 
+The card body comes from `body: { template: gojira }`, also built in. It shows `creator`, `assignee`, `created` and `due` in one row and `summary` full width below, all as read-only text. It reads exactly those five keys, so keep their names. Do not write rows yourself. The body shows nothing else, so key, title, type and status appear only in the header. Keep declaring every field in `fields` as before. The body hides what it does not show, and the output keeps it.
+
 Every field is `readonly: true`. The user reviews tickets here and edits none of them, and no edited value could be written back to Jira anyway. Field type is `text`, except `created` and `due` as `date` and `summary` as `longtext`.
 
 Text values that contain `: `, a leading `#`, or other YAML syntax must be quoted. Ticket titles trip this often. When a script writes the file, emit every string with `json.dumps(value, ensure_ascii=False)`: a JSON string is a valid double-quoted YAML scalar, so no PyYAML install is needed.

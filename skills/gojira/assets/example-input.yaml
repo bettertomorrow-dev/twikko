@@ -1,10 +1,13 @@
 # Two pulled tickets. `key` identifies each entity. The built-in `gojira` header
 # template draws the type icon, key, title and status in the card header from
-# the `type`, `key`, `title` and `status` entity keys. Every field is read-only.
-# `assignee` and `due` are left out of a ticket that has no value.
+# the `type`, `key`, `title` and `status` entity keys. The built-in `gojira`
+# body template shows creator, assignee, created, due and summary as text. Every
+# field is read-only. `assignee` and `due` are left out of a ticket that has no
+# value.
 schema:
   id_field: key
   header: { template: gojira }
+  body: { template: gojira }
   fields:
     - name: key
       label: ID

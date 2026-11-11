@@ -80,7 +80,7 @@ func TestEveryEmbeddedTemplateIsValid(t *testing.T) {
 			t.Errorf("%s: %v", name, err)
 			continue
 		}
-		if err := ValidateHeader(&header); err != nil {
+		if err := ValidateHeader(&header, nil); err != nil {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
@@ -156,4 +156,21 @@ func TestGojiraSkillExampleFitsTheGojiraTemplate(t *testing.T) {
 	if len(doc.Schema.Header.Widgets) == 0 {
 		t.Fatal("the gojira template has no widgets")
 	}
+	if doc.Schema.Body == nil || doc.Schema.Body.Template != "gojira" || len(doc.Schema.Body.Rows) == 0 {
+		t.Fatalf("the example must use the gojira body template: %#v", doc.Schema.Body)
+	}
+	for _, shown := range doc.Schema.displayWidgets() {
+		if !anyEntityHas(doc.Entities, shown.widget.Source) {
+			t.Errorf("%s reads %q, which no example ticket has", shown.where, shown.widget.Source)
+		}
+	}
+}
+
+func mustNode(t *testing.T, doc string) *yaml.Node {
+	t.Helper()
+	var root yaml.Node
+	if err := yaml.Unmarshal([]byte(doc), &root); err != nil {
+		t.Fatal(err)
+	}
+	return root.Content[0]
 }

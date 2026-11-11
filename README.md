@@ -74,6 +74,10 @@ schema:
   header:                # optional: widgets drawn in the card header
     - { type: tag, source: key }
     - { type: text, source: summary, style: { bold: true } }
+  body:                  # optional: rows of up to four widgets
+    - - { source: status }               # no type: a control, picked from the field type
+      - { source: labels }
+    - - { type: textarea, source: summary }   # override: show a text field as a textarea
   fields:
     - name: key
       label: Ticket
@@ -95,16 +99,20 @@ entities:
     labels: [bug]
 ```
 
-Field types are `text`, `longtext`, `number`, `bool`, `enum`, `multienum`, and
-`date`. Any field can be `required` or `readonly`. `enum` and `multienum` need
+Field types are `text`, `longtext`, `number`, `bool`, `enum`, `multienum`,
+`date`, `time` (`14:30`), and `datetime` (`2026-10-20T14:30`, no zone). Any field
+can be `required` or `readonly`. `enum` and `multienum` need
 `options`; other types must not have them. Entity keys that the schema does not
 declare are not shown, but they are kept unchanged in the output.
 
-### Card header
+### Widgets
 
-By default a card header shows the entity identifier. `schema.title_field`
-names an entity key to show instead. `schema.header` replaces the title with a
-list of widgets placed side by side between the eye toggle and the menu:
+The card header and the card body are built from the same widgets. A widget has
+a `type`, a `source`, and optionally a `label`, `options`, `variants`, and
+`style`. It either shows a value or edits a field.
+
+Display widgets show a value, read-only. `source` is an entity key or a dotted
+path to a scalar, and may point at keys the schema does not declare.
 
 - `icon`: a vendored Tabler icon. `variants` map a value to an icon and an
   `intent` (`neutral`, `info`, `success`, `warning`, `danger`). A value with no
@@ -112,14 +120,60 @@ list of widgets placed side by side between the eye toggle and the menu:
 - `tag`: the value in a pill. `variants` map a value to an `intent`.
 - `text`: the value as text, with `style` `bold`, `italic`, and `muted`.
 
-`source` is an entity key or a dotted path to a scalar, and may point at keys
-the schema does not declare. A widget without a value is skipped. Widgets show
-the current values, so a tag bound to an editable field follows the edits.
+Controls edit a field. `source` is the name of a field declared in
+`schema.fields`. `type: control` picks the control from the field's type. Leaving
+`type` out means `control`. Naming a control type instead overrides the pick:
+
+| Field type | `control` draws | Other types it accepts |
+| --- | --- | --- |
+| `text` | `input` | `textarea`, `select` (needs `options`) |
+| `longtext` | `textarea` | `input` |
+| `number` | `number` | |
+| `bool` | `toggle` | |
+| `enum` | `select` | |
+| `multienum` | `multiselect` (checkboxes) | |
+| `date`, `time`, `datetime` | `date`, `time`, `datetime` | |
+
+An override only changes how the same kind of value is drawn. `select` over a
+`text` field takes `options` on the widget, and then the field accepts only
+those values, including in a request sent straight to the server.
+
+`label` replaces the field label above a control. A `toggle` shows it to the
+right of the switch, and it is optional. In the header a control shows no label
+and uses it as a tooltip, except a toggle. A display widget shows `label` as a
+caption in the body and as a muted prefix in the header.
+
+A field has one control in the header and body together. Display widgets can
+repeat a source. Widgets that show values follow edits, and the control being
+typed in is never redrawn.
+
+### Card header
+
+By default a card header shows the entity identifier. `schema.title_field`
+names an entity key to show instead. `schema.header` replaces the title with a
+list of widgets placed side by side between the eye toggle and the menu. A
+display widget without a value is skipped. A control in the header works while
+the card is collapsed. A field the header edits is left out of the default body
+grid.
 
 `header: { template: gojira }` selects a built-in widget list instead of
 writing one. It is the header for tickets pulled by the `gojira` skill. An
 unknown template name or icon name fails the load and lists the valid ones.
 `title_field` and `header` cannot be used together.
+
+### Card body
+
+By default the body shows every field in a two-column grid. `schema.body`
+shapes it as rows of one to four widgets, up to ten rows. A row's widgets share
+its width equally, and every row stacks to one column on a narrow screen. A
+display widget with no value leaves an empty slot, so columns keep their place
+across cards, and a text widget wraps long values. **A field that no control in
+the header or body places is hidden** once a body is set, but it stays unchanged
+in the output. The load fails when a field has two controls, a control names an
+undeclared field or does not fit it, a limit is broken, or a required editable
+field would be hidden.
+
+`body: { template: gojira }` selects a built-in layout, as for the header.
 
 ## Output
 
@@ -198,7 +252,7 @@ Layout:
 
 ```text
 main.go              CLI entry point and process lifecycle
-internal/schema      Input parsing and validation, header widgets and templates
+internal/schema      Input parsing and validation, header widgets, body layout, templates
 internal/icons       Vendored Tabler icons, the list of valid icon names
 internal/session     In-memory edit state and change tracking
 internal/output      Atomic YAML output writer

@@ -1,3 +1,8 @@
+# A ticket editor that uses most widgets and controls. All values are invented.
+#
+# Display widgets (icon, tag, text) show a value and follow edits. Controls edit
+# a schema field: leave `type` out and the field's type picks the control, or
+# name one to override it.
 schema:
   id_field: key
   header:
@@ -9,10 +14,26 @@ schema:
     - { type: tag, source: key }
     - { type: text, source: summary, style: { bold: true } }
     - type: tag
-      source: status
+      source: priority
       variants:
-        In Progress: { intent: info }
-        Done: { intent: success }
+        High: { intent: danger }
+        Medium: { intent: warning }
+    - { source: status }                  # a control in the header: an enum draws a select
+  body:
+    - - { type: text, source: reporter.name, label: Reporter }   # display, dotted path
+      - { type: text, source: created, label: Created }
+      - { type: tag, source: status, label: Now }                # follows the header select
+    - - { source: summary }               # a text field draws an input
+    - - { source: description }           # a longtext field draws a textarea
+    - - { source: labels }                # a multienum draws checkboxes
+      - { type: select, source: component, options: [API, Web, Docs] }   # text field as a select
+      - { source: points }                # a number draws a number box
+    - - { source: due }                   # date
+      - { source: standup }               # time
+      - { source: review_at }             # datetime
+    - - { type: textarea, source: notes }              # override: a text field as a textarea
+      - { type: toggle, source: blocked, label: Blocked }   # the label sits right of the switch
+      - { type: toggle, source: needs_qa }              # no label, no text
   fields:
     - name: key
       label: Ticket
@@ -29,28 +50,56 @@ schema:
     - name: labels
       type: multienum
       options: [backend, ui, bug]
+    - name: component
+      type: text
     - name: points
       type: number
     - name: due
       type: date
+    - name: standup
+      label: Stand-up
+      type: time
+    - name: review_at
+      label: Review at
+      type: datetime
+    - name: notes
+      type: text
     - name: blocked
       type: bool
+    - name: needs_qa
+      label: Needs QA
+      type: bool
 entities:
-  - key: PROJ-1
+  - key: PROJ-101
     type: Bug
+    priority: High
+    reporter: { name: Dana Example }
+    created: 2026-11-02
     summary: Fix login
     description: Users cannot sign in after resetting a password.
     status: To Do
     labels: [bug]
+    component: Web
     points: 3
-    due: 2026-10-20
+    due: 2026-11-20
+    standup: "09:30"
+    review_at: 2026-11-22T10:00
+    notes: Reproduced on the staging build.
     blocked: false
-  - key: PROJ-2
+    needs_qa: true
+  - key: PROJ-102
     type: Task
+    priority: Medium
+    reporter: { name: Sam Sample }
+    created: 2026-11-04
     summary: Improve import logs
     description: Show the row number in parsing errors.
     status: In Progress
     labels: [backend]
+    component: API
     points: 2
-    due: 2026-10-27
-    blocked: false
+    due: 2026-11-27
+    standup: "10:00"
+    review_at: 2026-11-29T15:30
+    blocked: true
+    needs_qa: false

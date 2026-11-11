@@ -192,9 +192,12 @@ func (s *Server) entityAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.render(w, ui.FieldStatus(index, field))
-	if entity := data.Entity(index); entity.HasHeader {
-		s.render(w, ui.HeaderWidgets(data, entity, true))
-	}
+	// Out of band: the display widgets that show the edited value, and the badges
+	// of a collapsed card. Controls are left alone, so the one being typed in
+	// keeps its focus.
+	entity := data.Entity(index)
+	s.render(w, ui.DisplaySlots(data, entity))
+	s.render(w, ui.EntityBadges(entity, true))
 	s.renderOOBSaveBar(w, data)
 }
 

@@ -1,0 +1,9 @@
+# Card body for tickets pulled by the gojira skill. It shows the people and dates
+# in one row and the digest below, all as read-only text. The sources are entity
+# keys that skill writes. Key, title, type and status are in the header, so the
+# body leaves them out.
+- - { type: text, label: Creator, source: creator }
+  - { type: text, label: Assignee, source: assignee }
+  - { type: text, label: Created, source: created }
+  - { type: text, label: Due, source: due }
+- - { type: text, label: Summary, source: summary }

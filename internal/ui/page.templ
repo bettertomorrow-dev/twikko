@@ -40,41 +40,84 @@ templ EntityCard(data PageData, entity EntityView) {
 			<div class="flex min-w-0 items-center gap-3">
 				@CollapseToggle(data, entity)
 				if entity.HasHeader {
-					@HeaderWidgets(data, entity, false)
+					<div class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
+						for _, widget := range entity.Widgets {
+							@Widget(data, entity, widget, true)
+						}
+					</div>
 				} else {
 					<h2 class="truncate text-sm font-medium">{ entity.Title }</h2>
 				}
-				if entity.Collapsed && entity.HasErrors {
-					<span class="shrink-0 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">Has errors</span>
-				}
-				if entity.Collapsed && entity.ChangedCount > 0 {
-					<span class="shrink-0 rounded-full bg-changed/15 px-2 py-0.5 text-xs font-medium text-changed-foreground">{ fmt.Sprintf("%d changed", entity.ChangedCount) }</span>
-				}
+				@EntityBadges(entity, false)
 			</div>
 			@CardMenu(data, entity)
 		</header>
 		if !entity.Collapsed {
-			<div class="grid gap-5 p-5 md:grid-cols-2">
-				for _, field := range entity.Fields {
-					@FieldInput(data, entity, field)
-				}
-			</div>
+			if entity.HasBody {
+				<div class="flex flex-col gap-5 p-5">
+					for _, row := range entity.Rows {
+						<div class={ row.Class }>
+							for _, widget := range row.Widgets {
+								@Widget(data, entity, widget, false)
+							}
+						</div>
+					}
+				</div>
+			} else {
+				<div class="grid gap-5 p-5 md:grid-cols-2">
+					for _, widget := range entity.Grid {
+						@Widget(data, entity, widget, false)
+					}
+				</div>
+			}
 		}
 	</section>
 }
 
-// HeaderWidgets draws the configured header pieces in one row. With oob it
-// renders as an out-of-band htmx swap, so editing a field refreshes the widgets
-// bound to it.
-templ HeaderWidgets(data PageData, entity EntityView, oob bool) {
-	<h2 id={ fmt.Sprintf("header-widgets-%d", entity.Index) } { oobAttrs(oob)... } class="flex min-w-0 items-center gap-3">
-		for _, widget := range entity.Widgets {
-			@HeaderWidget(data, widget)
+// EntityBadges marks a collapsed card that holds errors or changes. Edits can
+// happen in a header control while the card is collapsed, so an edit refreshes
+// it out of band.
+templ EntityBadges(entity EntityView, oob bool) {
+	<div id={ fmt.Sprintf("entity-badges-%d", entity.Index) } { oobAttrs(oob)... } class="flex shrink-0 items-center gap-3 empty:hidden">
+		if entity.Collapsed && entity.HasErrors {
+			<span class="shrink-0 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">Has errors</span>
 		}
-	</h2>
+		if entity.Collapsed && entity.ChangedCount > 0 {
+			<span class="shrink-0 rounded-full bg-changed/15 px-2 py-0.5 text-xs font-medium text-changed-foreground">{ fmt.Sprintf("%d changed", entity.ChangedCount) }</span>
+		}
+	</div>
 }
 
-templ HeaderWidget(data PageData, widget WidgetView) {
+// Widget draws one header or body widget: a control, or a display slot.
+templ Widget(data PageData, entity EntityView, widget WidgetView, header bool) {
+	if widget.Field != nil {
+		@Control(data, entity, widget, header)
+	} else {
+		@DisplaySlot(data, widget, header, false)
+	}
+}
+
+// DisplaySlot is a read-only widget with an optional label. In the header the
+// label is a muted prefix and an empty slot collapses. In the body the label is
+// a caption and an empty slot keeps its place. With oob it renders as an
+// out-of-band htmx swap, so editing a field refreshes the widgets that show it.
+// Controls are never swapped, which keeps the focus of the one being typed in.
+templ DisplaySlot(data PageData, widget WidgetView, header bool, oob bool) {
+	<div id={ widget.ID } { oobAttrs(oob)... } class={ displaySlotClass(header) }>
+		if widget.HasValue {
+			if widget.Label != "" {
+				if header {
+					<span class="shrink-0 text-xs text-muted-foreground">{ widget.Label }</span>
+				} else {
+					<span class="mb-1.5 block text-sm font-medium">{ widget.Label }</span>
+				}
+			}
+			@DisplayWidget(data, widget)
+		}
+	</div>
+}
+
+templ DisplayWidget(data PageData, widget WidgetView) {
 	if widget.Type == schema.WidgetIcon {
 		<span class={ widget.Class } role="img" aria-label={ widget.Text } title={ widget.Text }>
 			@Icon(data, widget.Icon)
@@ -83,6 +126,22 @@ templ HeaderWidget(data PageData, widget WidgetView) {
 		<span class={ widget.Class }>{ widget.Text }</span>
 	} else {
 		<span class={ widget.Class } title={ widget.Text }>{ widget.Text }</span>
+	}
+}
+
+// DisplaySlots renders every display slot of a card out of band, header and body.
+templ DisplaySlots(data PageData, entity EntityView) {
+	for _, widget := range entity.Widgets {
+		if widget.Field == nil {
+			@DisplaySlot(data, widget, true, true)
+		}
+	}
+	for _, row := range entity.Rows {
+		for _, widget := range row.Widgets {
+			if widget.Field == nil {
+				@DisplaySlot(data, widget, false, true)
+			}
+		}
 	}
 }
 
@@ -130,103 +189,99 @@ templ CardMenu(data PageData, entity EntityView) {
 	</details>
 }
 
-templ FieldInput(data PageData, entity EntityView, field FieldView) {
-	<div class={ templ.Classes("border-l-2 pl-3", templ.KV("border-changed", field.Changed), templ.KV("border-transparent", !field.Changed)) }>
-		<label class="mb-1.5 block text-sm font-medium" for={ fmt.Sprintf("field-%d-%s", entity.Index, field.Field.Name) }>
-			{ field.Field.Label }
-			if field.Field.Required {
-				<span class="text-destructive">*</span>
-			}
-		</label>
-		if field.Field.Type == "longtext" {
-			<textarea
-				id={ fmt.Sprintf("field-%d-%s", entity.Index, field.Field.Name) }
-				name="value"
-				class={ inputClass + " min-h-28" }
-				disabled?={ field.Field.Readonly }
-				hx-post={ templ.SafeURL(fmt.Sprintf("/s/%s/entities/%d/fields/%s", data.Token, entity.Index, field.Field.Name)) }
-				hx-trigger="keyup changed delay:400ms, change"
-				hx-target={ fmt.Sprintf("#status-%d-%s", entity.Index, field.Field.Name) }
-				hx-swap="outerHTML"
-			>{ String(field.Value) }</textarea>
-		} else if field.Field.Type == "enum" {
-			<select
-				id={ fmt.Sprintf("field-%d-%s", entity.Index, field.Field.Name) }
-				name="value"
-				class={ inputClass }
-				disabled?={ field.Field.Readonly }
-				hx-post={ templ.SafeURL(fmt.Sprintf("/s/%s/entities/%d/fields/%s", data.Token, entity.Index, field.Field.Name)) }
-				hx-trigger="change"
-				hx-target={ fmt.Sprintf("#status-%d-%s", entity.Index, field.Field.Name) }
-				hx-swap="outerHTML"
-			>
-				if !field.Field.Required {
-					<option value="">Select...</option>
+// Control draws the edit control of a field. A control in the header has no
+// visible label, which is its tooltip and accessible name instead, and shows
+// only errors under it.
+templ Control(data PageData, entity EntityView, widget WidgetView, header bool) {
+	<div class={ controlWrapperClass(header, widget.Field.Changed) }>
+		if !header && widget.Type != schema.WidgetToggle {
+			<label class="mb-1.5 block text-sm font-medium" for={ fieldID(entity.Index, widget.Field.Field.Name) }>
+				{ widget.Field.Field.Label }
+				if widget.Field.Field.Required {
+					<span class="text-destructive">*</span>
 				}
-				for _, option := range field.Field.Options {
-					<option value={ option } selected?={ String(field.Value) == option }>{ option }</option>
-				}
-			</select>
-		} else if field.Field.Type == "multienum" {
-			<div class="flex flex-wrap gap-x-4 gap-y-2 rounded-md border border-input p-3" id={ fmt.Sprintf("group-%d-%s", entity.Index, field.Field.Name) }>
-				for _, option := range field.Field.Options {
-					<label class="inline-flex items-center gap-2 text-sm">
-						<input
-							type="checkbox"
-							class="size-4 accent-primary"
-							name="value"
-							value={ option }
-							checked?={ Contains(field.Value, option) }
-							disabled?={ field.Field.Readonly }
-							hx-post={ templ.SafeURL(fmt.Sprintf("/s/%s/entities/%d/fields/%s", data.Token, entity.Index, field.Field.Name)) }
-							hx-trigger="change"
-							hx-include={ fmt.Sprintf("#group-%d-%s", entity.Index, field.Field.Name) }
-							hx-target={ fmt.Sprintf("#status-%d-%s", entity.Index, field.Field.Name) }
-							hx-swap="outerHTML"
-						/>
-						{ option }
-					</label>
-				}
-			</div>
-		} else if field.Field.Type == "bool" {
-			<label class="inline-flex items-center gap-2">
-				<input
-					id={ fmt.Sprintf("field-%d-%s", entity.Index, field.Field.Name) }
-					type="checkbox"
-					class="size-4 accent-primary"
-					name="value"
-					checked?={ String(field.Value) == "true" }
-					disabled?={ field.Field.Readonly }
-					hx-post={ templ.SafeURL(fmt.Sprintf("/s/%s/entities/%d/fields/%s", data.Token, entity.Index, field.Field.Name)) }
-					hx-trigger="change"
-					hx-target={ fmt.Sprintf("#status-%d-%s", entity.Index, field.Field.Name) }
-					hx-swap="outerHTML"
-				/>
-				<span class="text-sm">Enabled</span>
 			</label>
-		} else {
-			<input
-				id={ fmt.Sprintf("field-%d-%s", entity.Index, field.Field.Name) }
-				type={ inputType(field.Field.Type) }
-				name="value"
-				value={ String(field.Value) }
-				class={ inputClass }
-				disabled?={ field.Field.Readonly }
-				hx-post={ templ.SafeURL(fmt.Sprintf("/s/%s/entities/%d/fields/%s", data.Token, entity.Index, field.Field.Name)) }
-				hx-trigger="keyup changed delay:400ms, change"
-				hx-target={ fmt.Sprintf("#status-%d-%s", entity.Index, field.Field.Name) }
-				hx-swap="outerHTML"
-			/>
 		}
-		@FieldStatus(entity.Index, field)
+		switch widget.Type {
+			case schema.WidgetTextarea:
+				<textarea
+					id={ fieldID(entity.Index, widget.Field.Field.Name) }
+					name="value"
+					class={ textareaClass(header) }
+					disabled?={ widget.Field.Field.Readonly }
+					{ controlAttrs(data, entity, widget, header, "keyup changed delay:400ms, change")... }
+				>{ String(widget.Field.Value) }</textarea>
+			case schema.WidgetSelect:
+				<select
+					id={ fieldID(entity.Index, widget.Field.Field.Name) }
+					name="value"
+					class={ inputClass(header) }
+					disabled?={ widget.Field.Field.Readonly }
+					{ controlAttrs(data, entity, widget, header, "change")... }
+				>
+					if !widget.Field.Field.Required {
+						<option value="">Select...</option>
+					}
+					for _, option := range choices(widget.Field.Field) {
+						<option value={ option } selected?={ String(widget.Field.Value) == option }>{ option }</option>
+					}
+				</select>
+			case schema.WidgetMultiSelect:
+				<div class="flex flex-wrap gap-x-4 gap-y-2 rounded-md border border-input p-3" id={ fmt.Sprintf("group-%d-%s", entity.Index, widget.Field.Field.Name) }>
+					for _, option := range widget.Field.Field.Options {
+						<label class="inline-flex items-center gap-2 text-sm">
+							<input
+								type="checkbox"
+								class="size-4 accent-primary"
+								name="value"
+								value={ option }
+								checked?={ Contains(widget.Field.Value, option) }
+								disabled?={ widget.Field.Field.Readonly }
+								hx-include={ fmt.Sprintf("#group-%d-%s", entity.Index, widget.Field.Field.Name) }
+								{ controlAttrs(data, entity, widget, false, "change")... }
+							/>
+							{ option }
+						</label>
+					}
+				</div>
+			case schema.WidgetToggle:
+				<label class={ switchLabelClass }>
+					<input
+						id={ fieldID(entity.Index, widget.Field.Field.Name) }
+						type="checkbox"
+						role="switch"
+						class="peer sr-only"
+						name="value"
+						checked?={ String(widget.Field.Value) == "true" }
+						disabled?={ widget.Field.Field.Readonly }
+						aria-label={ widget.Field.Field.Label }
+						{ controlAttrs(data, entity, widget, false, "change")... }
+					/>
+					<span class={ switchTrackClass } aria-hidden="true"></span>
+					if widget.Label != "" {
+						<span class="text-sm">{ widget.Label }</span>
+					}
+				</label>
+			default:
+				<input
+					id={ fieldID(entity.Index, widget.Field.Field.Name) }
+					type={ inputType(widget.Type) }
+					name="value"
+					value={ String(widget.Field.Value) }
+					class={ inputClass(header) }
+					disabled?={ widget.Field.Field.Readonly }
+					{ controlAttrs(data, entity, widget, header, "keyup changed delay:400ms, change")... }
+				/>
+		}
+		@FieldStatus(entity.Index, *widget.Field)
 	</div>
 }
 
 templ FieldStatus(index int, field FieldView) {
-	<div id={ fmt.Sprintf("status-%d-%s", index, field.Field.Name) } class="mt-1 min-h-5 text-xs">
+	<div id={ fmt.Sprintf("status-%d-%s", index, field.Field.Name) } class={ statusClass(field) }>
 		if field.Error != "" {
 			<span class="text-destructive">{ field.Error }</span>
-		} else if field.Changed {
+		} else if field.Changed && !field.Compact {
 			<span class="text-changed-foreground">Changed</span>
 		}
 	</div>

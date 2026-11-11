@@ -15,16 +15,37 @@ import (
 // Shared control styling, modelled on shadcn/ui. A read-only field renders as a
 // disabled control, muted but still readable.
 const (
-	inputClass = "w-full rounded-md border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs outline-none " +
+	inputBaseClass = "rounded-md border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs outline-none " +
 		"focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 " +
 		"disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground " +
 		"disabled:[-webkit-text-fill-color:var(--muted-foreground)]"
-	outlineButtonClass = "rounded-md border bg-background px-4 py-2 text-sm font-medium shadow-xs hover:bg-accent hover:text-accent-foreground"
-	primaryButtonClass = "rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-xs hover:bg-primary/90 " +
+	// A control fills its body cell, and stays narrow in the header row.
+	inputBodyClass      = inputBaseClass + " w-full"
+	inputHeaderClass    = inputBaseClass + " w-44 py-1"
+	textareaBodyClass   = inputBodyClass + " min-h-28"
+	textareaHeaderClass = inputHeaderClass + " min-h-16"
+	outlineButtonClass  = "rounded-md border bg-background px-4 py-2 text-sm font-medium shadow-xs hover:bg-accent hover:text-accent-foreground"
+	primaryButtonClass  = "rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-xs hover:bg-primary/90 " +
 		"disabled:cursor-not-allowed disabled:opacity-50"
+
+	// The on/off switch is a visually hidden checkbox, which keeps it a form
+	// control, followed by a track whose thumb moves when it is checked.
+	switchLabelClass = "inline-flex cursor-pointer items-center gap-2 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60"
+	switchTrackClass = "relative h-5 w-9 shrink-0 rounded-full bg-input transition-colors " +
+		"peer-checked:bg-primary peer-focus-visible:ring-[3px] peer-focus-visible:ring-ring/50 " +
+		"after:absolute after:left-0.5 after:top-0.5 after:size-4 after:rounded-full after:bg-background " +
+		"after:shadow-xs after:transition-transform peer-checked:after:translate-x-4"
+
+	// A control with its marker for a changed value, in a body cell or the header.
+	controlBodyClass   = "min-w-0 border-l-2 pl-3 "
+	controlHeaderClass = "min-w-0 shrink-0 border-l-2 pl-2 "
+	// A display slot of the header collapses when empty, so it leaves no gap. A
+	// body slot keeps its place, so columns do not shift between cards.
+	displayHeaderSlotClass = "flex min-w-0 items-center gap-1.5 empty:hidden"
+	displayBodySlotClass   = "min-w-0 border-l-2 border-transparent pl-3"
 )
 
-// Header widget styling. Classes are spelled out in full, because Tailwind finds
+// Display widget styling. Classes are spelled out in full, because Tailwind finds
 // them by scanning source files at build time and cannot expand a name built
 // from a YAML value. A theme token backs every intent.
 var (
@@ -48,13 +69,29 @@ const (
 	iconWidgetClass = "inline-flex shrink-0 items-center "
 	tagWidgetClass  = "inline-flex shrink-0 items-center rounded-md px-2 py-0.5 text-xs font-medium "
 	textWidgetClass = "min-w-0 truncate text-sm "
+	// A body text widget wraps and keeps line breaks, so a long digest stays readable.
+	bodyTextWidgetClass = "min-w-0 whitespace-pre-line break-words text-sm "
 )
+
+// bodyRowClass maps a row's cell count to its grid. A row is hidden until one
+// of its cells has content, so a row of blank display cells leaves no gap, and
+// it shows again when an edit fills one. Rows stack to one column below md.
+// The strings are spelled out in full for Tailwind.
+var bodyRowClass = map[int]string{
+	1: "hidden has-[>*>*]:grid gap-5 grid-cols-1",
+	2: "hidden has-[>*>*]:grid gap-5 grid-cols-1 md:grid-cols-2",
+	3: "hidden has-[>*>*]:grid gap-5 grid-cols-1 md:grid-cols-3",
+	4: "hidden has-[>*>*]:grid gap-5 grid-cols-1 md:grid-cols-2 lg:grid-cols-4",
+}
 
 type FieldView struct {
 	Field   schema.Field
 	Value   any
 	Error   string
 	Changed bool
+	// Compact is true for a field edited in the header, where the status line
+	// shows an error only.
+	Compact bool
 }
 
 type EntityView struct {
@@ -65,19 +102,41 @@ type EntityView struct {
 	ChangedCount int
 	HasErrors    bool
 	Fields       []FieldView
-	// HasHeader is true when the schema configures header widgets. Widgets
-	// then replaces the plain title.
+	// HasHeader is true when the schema configures header widgets. Widgets then
+	// replaces the plain title.
 	HasHeader bool
 	Widgets   []WidgetView
+	// HasBody is true when the schema lays the body out in rows. Rows then
+	// replaces the grid.
+	HasBody bool
+	Rows    []RowView
+	// Grid is the default body: a control for every field the header does not
+	// place. It is empty when the schema has a body.
+	Grid []WidgetView
 }
 
-// WidgetView is a header widget resolved against one entity's current values.
+// RowView is one row of the card body.
+type RowView struct {
+	Class   string
+	Widgets []WidgetView
+}
+
+// WidgetView is a header or body widget resolved against one entity's current
+// values. A control carries the field it edits. A display widget carries what
+// to draw, and has no value when its source is empty.
 type WidgetView struct {
+	// ID names a display slot, so an edit can refresh it out of band.
+	ID string
+	// Type is the display type, or for a control the kind it resolved to.
 	Type schema.WidgetType
+	// Label is a display caption or a toggle's visible text.
+	Label string
 	// Text is the tag or text content, and the accessible name of an icon.
-	Text  string
-	Icon  string
-	Class string
+	Text     string
+	Icon     string
+	Class    string
+	HasValue bool
+	Field    *FieldView
 }
 
 type PageData struct {
@@ -97,6 +156,7 @@ func NewPageData(store *session.Store, token string) PageData {
 		HasErrors: store.HasErrors(),
 		Entities:  make([]EntityView, store.EntityCount()),
 	}
+	inHeader := headerControls(s)
 	for index := range data.Entities {
 		entity := store.Entity(index)
 		id := nodeText(schema.MapValue(entity, s.IDField))
@@ -106,70 +166,138 @@ func NewPageData(store *session.Store, token string) PageData {
 				title = custom
 			}
 		}
-		data.Entities[index] = EntityView{
+		view := &data.Entities[index]
+		*view = EntityView{
 			Index:     index,
 			ID:        id,
 			Title:     title,
 			Collapsed: store.Collapsed(index),
 			Fields:    make([]FieldView, len(s.Fields)),
 		}
-		if s.Header != nil {
-			view := &data.Entities[index]
-			view.HasHeader = true
-			view.Widgets = ResolveWidgets(s.Header, entity)
-			view.Title = headerTitle(view.Widgets, id)
-		}
+		byName := make(map[string]*FieldView, len(s.Fields))
 		for fieldIndex, field := range s.Fields {
-			data.Entities[index].Fields[fieldIndex] = FieldView{
+			view.Fields[fieldIndex] = FieldView{
 				Field:   field,
 				Value:   store.FieldValue(index, field),
 				Error:   store.Error(index, field.Name),
 				Changed: store.IsChanged(index, field.Name),
+				Compact: inHeader[field.Name],
 			}
-			view := data.Entities[index].Fields[fieldIndex]
-			if view.Changed {
-				data.Entities[index].ChangedCount++
+			fv := &view.Fields[fieldIndex]
+			byName[field.Name] = fv
+			if fv.Changed {
+				view.ChangedCount++
 			}
-			if view.Error != "" {
-				data.Entities[index].HasErrors = true
+			if fv.Error != "" {
+				view.HasErrors = true
+			}
+		}
+		if s.Header != nil {
+			view.HasHeader = true
+			view.Widgets = resolveWidgets(s.Header.Widgets, entity, byName, func(i int) string {
+				return fmt.Sprintf("widget-%d-h-%d", index, i)
+			}, textWidgetClass)
+			view.Title = headerTitle(view.Widgets, id)
+		}
+		switch {
+		case s.Body != nil:
+			view.HasBody = true
+			view.Rows = make([]RowView, len(s.Body.Rows))
+			for r, row := range s.Body.Rows {
+				view.Rows[r] = RowView{
+					Class: bodyRowClass[len(row)],
+					Widgets: resolveWidgets(row, entity, byName, func(c int) string {
+						return fmt.Sprintf("widget-%d-%d-%d", index, r, c)
+					}, bodyTextWidgetClass),
+				}
+			}
+		default:
+			for i := range view.Fields {
+				if !inHeader[view.Fields[i].Field.Name] {
+					view.Grid = append(view.Grid, autoControl(&view.Fields[i]))
+				}
 			}
 		}
 	}
 	return data
 }
 
-// ResolveWidgets reads each widget's source from the entity and returns what to
-// draw. A widget whose source has no value is left out, so it leaves no gap. An
-// icon or tag takes its look from the variant that matches the value exactly;
-// an icon with no matching variant gets the fallback icon.
-func ResolveWidgets(header *schema.Header, entity *yaml.Node) []WidgetView {
-	views := make([]WidgetView, 0, len(header.Widgets))
-	for _, widget := range header.Widgets {
-		value, ok, err := schema.HeaderValue(entity, widget.Source)
-		if err != nil || !ok {
-			continue
-		}
-		variant, matched := widget.Variants[value]
-		intent := variant.Intent
-		if intent == "" {
-			intent = schema.IntentNeutral
-		}
-		view := WidgetView{Type: widget.Type, Text: value}
-		switch widget.Type {
-		case schema.WidgetIcon:
-			view.Icon = icons.Fallback
-			if matched && variant.Icon != "" {
-				view.Icon = variant.Icon
+// headerControls lists the fields a header control edits. The default body
+// leaves them out, so no field has two controls.
+func headerControls(s schema.Schema) map[string]bool {
+	placed := map[string]bool{}
+	if s.Header != nil {
+		for _, w := range s.Header.Widgets {
+			if w.IsControl() {
+				placed[w.Source] = true
 			}
-			view.Class = iconWidgetClass + iconIntentClass[intent]
-		case schema.WidgetTag:
-			view.Class = tagWidgetClass + tagIntentClass[intent]
-		default:
-			view.Class = textWidgetClass + textStyleClass(widget.Style)
 		}
-		views = append(views, view)
+	}
+	return placed
+}
+
+// autoControl is the control the field's data type calls for.
+func autoControl(field *FieldView) WidgetView {
+	kind, _ := schema.ControlKind(schema.Widget{Type: schema.WidgetControl}, field.Field)
+	return WidgetView{Type: kind, Field: field}
+}
+
+// resolveWidgets resolves a list of widgets for one entity. id names the display
+// slot at a position. textClass is the base class of a text widget, which
+// differs between the header (truncates) and the body (wraps).
+func resolveWidgets(widgets []schema.Widget, entity *yaml.Node, fields map[string]*FieldView, id func(int) string, textClass string) []WidgetView {
+	views := make([]WidgetView, len(widgets))
+	for i, widget := range widgets {
+		views[i] = resolveWidget(widget, entity, fields, textClass)
+		views[i].ID = id(i)
 	}
 	return views
+}
+
+func resolveWidget(widget schema.Widget, entity *yaml.Node, fields map[string]*FieldView, textClass string) WidgetView {
+	if widget.IsControl() {
+		return resolveControl(widget, fields[widget.Source])
+	}
+	view := WidgetView{Type: widget.Type, Label: widget.Label}
+	value, ok, err := schema.HeaderValue(entity, widget.Source)
+	if err != nil || !ok {
+		return view
+	}
+	variant, matched := widget.Variants[value]
+	intent := variant.Intent
+	if intent == "" {
+		intent = schema.IntentNeutral
+	}
+	view.Text, view.HasValue = value, true
+	switch widget.Type {
+	case schema.WidgetIcon:
+		view.Icon = icons.Fallback
+		if matched && variant.Icon != "" {
+			view.Icon = variant.Icon
+		}
+		view.Class = iconWidgetClass + iconIntentClass[intent]
+	case schema.WidgetTag:
+		view.Class = tagWidgetClass + tagIntentClass[intent]
+	default:
+		view.Class = textClass + textStyleClass(widget.Style)
+	}
+	return view
+}
+
+// resolveControl points a control widget at the field it edits. A label
+// replaces the field label above a control. A toggle keeps it as visible text
+// to its right, and the field label stays as its accessible name.
+func resolveControl(widget schema.Widget, field *FieldView) WidgetView {
+	kind, _ := schema.ControlKind(widget, field.Field)
+	view := WidgetView{Type: kind, Field: field}
+	if kind == schema.WidgetToggle {
+		view.Label = widget.Label
+	} else if widget.Label != "" {
+		labelled := *field
+		labelled.Field.Label = widget.Label
+		view.Field = &labelled
+	}
+	return view
 }
 
 func textStyleClass(style schema.Style) string {
@@ -187,10 +315,10 @@ func textStyleClass(style schema.Style) string {
 }
 
 // headerTitle is the plain-text name of a card for screen readers and button
-// labels: the first text widget, or the identifier when there is none.
+// labels: the first text widget that has a value, or the identifier.
 func headerTitle(widgets []WidgetView, id string) string {
 	for _, widget := range widgets {
-		if widget.Type == schema.WidgetText {
+		if widget.Type == schema.WidgetText && widget.HasValue {
 			return widget.Text
 		}
 	}
@@ -230,15 +358,29 @@ func String(value any) string {
 	}
 }
 
-func inputType(fieldType schema.FieldType) string {
-	switch fieldType {
-	case schema.Number:
+// inputType is the HTML input type of a single-line control.
+func inputType(kind schema.WidgetType) string {
+	switch kind {
+	case schema.WidgetNumber:
 		return "number"
-	case schema.Date:
+	case schema.WidgetDate:
 		return "date"
+	case schema.WidgetTime:
+		return "time"
+	case schema.WidgetDateTime:
+		return "datetime-local"
 	default:
 		return "text"
 	}
+}
+
+// choices are the options a select offers: an enum's own, or the list a select
+// gave a text field.
+func choices(field schema.Field) []string {
+	if field.Type == schema.Enum {
+		return field.Options
+	}
+	return field.Choices
 }
 
 func nodeText(node *yaml.Node) string {
@@ -260,4 +402,64 @@ func oobAttrs(oob bool) templ.Attributes {
 		return templ.Attributes{"hx-swap-oob": "true"}
 	}
 	return nil
+}
+
+func fieldID(entityIndex int, name string) string {
+	return fmt.Sprintf("field-%d-%s", entityIndex, name)
+}
+
+func inputClass(header bool) string {
+	if header {
+		return inputHeaderClass
+	}
+	return inputBodyClass
+}
+
+func textareaClass(header bool) string {
+	if header {
+		return textareaHeaderClass
+	}
+	return textareaBodyClass
+}
+
+func controlWrapperClass(header, changed bool) string {
+	class := controlBodyClass
+	if header {
+		class = controlHeaderClass
+	}
+	if changed {
+		return class + "border-changed"
+	}
+	return class + "border-transparent"
+}
+
+func displaySlotClass(header bool) string {
+	if header {
+		return displayHeaderSlotClass
+	}
+	return displayBodySlotClass
+}
+
+func statusClass(field FieldView) string {
+	if field.Compact {
+		return "text-xs"
+	}
+	return "mt-1 min-h-5 text-xs"
+}
+
+// controlAttrs wires a control to its edit endpoint. A control in the header
+// has no label element, so its label becomes its accessible name and tooltip.
+func controlAttrs(data PageData, entity EntityView, widget WidgetView, header bool, trigger string) templ.Attributes {
+	name := widget.Field.Field.Name
+	attrs := templ.Attributes{
+		"hx-post":    fmt.Sprintf("/s/%s/entities/%d/fields/%s", data.Token, entity.Index, name),
+		"hx-trigger": trigger,
+		"hx-target":  fmt.Sprintf("#status-%d-%s", entity.Index, name),
+		"hx-swap":    "outerHTML",
+	}
+	if header {
+		attrs["aria-label"] = widget.Field.Field.Label
+		attrs["title"] = widget.Field.Field.Label
+	}
+	return attrs
 }
