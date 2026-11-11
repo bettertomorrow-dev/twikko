@@ -225,7 +225,7 @@ func (s Schema) widgets() []locatedWidget {
 func (s Schema) displayWidgets() []locatedWidget {
 	var shown []locatedWidget
 	for _, w := range s.widgets() {
-		if !w.widget.IsControl() {
+		if !w.widget.IsControl() && !w.widget.IsLine() {
 			shown = append(shown, w)
 		}
 	}

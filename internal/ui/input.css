@@ -1,5 +1,7 @@
 @import "tailwindcss";
 @source "./**/*.templ";
+/* The date and time picker popover is built in app.js. */
+@source "./static/app.js";
 
 /*
  * Theme: the shadcn/ui "neutral" tokens, copied from

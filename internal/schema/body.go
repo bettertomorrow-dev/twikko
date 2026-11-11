@@ -77,28 +77,46 @@ func decodeRows(node *yaml.Node) ([][]Widget, error) {
 	return rows, nil
 }
 
-// ValidateBody checks a body against the declared fields.
+// ValidateBody checks a body against the declared fields. Lines are layout, so
+// they do not count against the limits: a row of one hline is not a row, and a
+// vline is not a column.
 func ValidateBody(b *Body, fields []Field) error {
-	if len(b.Rows) == 0 {
-		return errors.New("schema.body has no rows")
-	}
-	if len(b.Rows) > MaxBodyRows {
-		return fmt.Errorf("schema.body has %d rows (at most %d)", len(b.Rows), MaxBodyRows)
-	}
 	declared := fieldMap(fields)
+	contentRows := 0
 	for r := range b.Rows {
 		row := b.Rows[r]
 		if len(row) == 0 {
 			return fmt.Errorf("body row %d is empty", r+1)
 		}
-		if len(row) > MaxBodyColumns {
-			return fmt.Errorf("body row %d has %d cells (at most %d)", r+1, len(row), MaxBodyColumns)
-		}
+		where := fmt.Sprintf("body row %d", r+1)
+		columns := 0
 		for c := range row {
-			if err := validateWidget(fmt.Sprintf("body row %d cell %d", r+1, c+1), &row[c], declared); err != nil {
+			if row[c].Type == WidgetHLine && len(row) != 1 {
+				return fmt.Errorf("%s cell %d: an hline takes a row of its own", where, c+1)
+			}
+			if err := validateWidget(fmt.Sprintf("%s cell %d", where, c+1), &row[c], declared); err != nil {
 				return err
 			}
+			if row[c].Type != WidgetVLine {
+				columns++
+			}
 		}
+		if err := checkVLines(where, row); err != nil {
+			return err
+		}
+		if row[0].Type == WidgetHLine {
+			continue
+		}
+		contentRows++
+		if columns > MaxBodyColumns {
+			return fmt.Errorf("%s has %d cells (at most %d)", where, columns, MaxBodyColumns)
+		}
+	}
+	if contentRows == 0 {
+		return errors.New("schema.body has no rows")
+	}
+	if contentRows > MaxBodyRows {
+		return fmt.Errorf("schema.body has %d rows (at most %d, not counting hlines)", contentRows, MaxBodyRows)
 	}
 	return nil
 }

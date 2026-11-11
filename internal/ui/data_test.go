@@ -245,3 +245,59 @@ func TestEntityWithoutLayoutHasOnlyTheGrid(t *testing.T) {
 		t.Errorf("unexpected layout: %#v", entity)
 	}
 }
+
+const lineBody = `  body:
+    - - {source: summary}
+      - {type: vline, intent: danger}
+      - {source: notes}
+    - - {type: hline}
+    - - {source: team}
+      - {type: vline}
+      - {source: points}
+      - {type: vline}
+      - {source: blocked}
+      - {type: vline}
+      - {source: due}
+    - - {source: at}
+      - {source: when}
+    - - {source: status}
+    - - {source: tags}
+`
+
+func TestBodyLinesTakeOnlyTheirOwnTrack(t *testing.T) {
+	rows := pageData(t, lineBody, "  - {key: A-1}\n").Entities[0].Rows
+	if len(rows) != 6 {
+		t.Fatalf("want 6 rows, got %d", len(rows))
+	}
+	if rows[0].Style != "--cols:minmax(0,1fr) auto minmax(0,1fr)" || !strings.Contains(rows[0].Class, "md:grid-cols-(--cols)") {
+		t.Errorf("a vline gets an auto track between two equal ones: %q %q", rows[0].Style, rows[0].Class)
+	}
+	if rows[1].Class != "" || len(rows[1].Widgets) != 1 || rows[1].Widgets[0].Type != schema.WidgetHLine {
+		t.Errorf("an hline is a row of its own with no grid: %#v", rows[1])
+	}
+	if !strings.Contains(rows[2].Class, "lg:grid-cols-(--cols)") || strings.Contains(rows[2].Class, "md:grid-cols") {
+		t.Errorf("four widgets with vlines stack until lg: %q", rows[2].Class)
+	}
+	if rows[3].Style != "" || rows[3].Class != bodyRowClass[2] {
+		t.Errorf("a row without vlines keeps its equal columns: %q %q", rows[3].Class, rows[3].Style)
+	}
+}
+
+func TestLineWidgetClasses(t *testing.T) {
+	rows := pageData(t, lineBody, "  - {key: A-1}\n").Entities[0].Rows
+	vline, hline := rows[0].Widgets[1], rows[1].Widgets[0]
+	if !vline.IsLine() || vline.Field != nil || !strings.Contains(vline.Class, "self-stretch border-l border-destructive") {
+		t.Errorf("a vline stretches to its row and uses its intent colour: %#v", vline)
+	}
+	if !strings.Contains(hline.Class, "border-t border-border") || hline.Orientation() != "horizontal" || vline.Orientation() != "vertical" {
+		t.Errorf("an hline is a neutral top border: %#v", hline)
+	}
+}
+
+func TestHeaderLineIsNotAControl(t *testing.T) {
+	data := pageData(t, "  header:\n    - {source: status}\n    - {type: vline}\n    - {type: text, source: summary}\n  body:\n    - - {source: summary}\n", "  - {key: A-1, summary: Fix}\n")
+	widgets := data.Entities[0].Widgets
+	if len(widgets) != 3 || !widgets[1].IsLine() || widgets[1].Field != nil || widgets[2].HasValue != true {
+		t.Fatalf("unexpected header widgets: %#v", widgets)
+	}
+}

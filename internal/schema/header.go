@@ -116,11 +116,15 @@ func ValidateHeader(h *Header, fields []Field) error {
 	}
 	declared := fieldMap(fields)
 	for i := range h.Widgets {
-		if err := validateWidget(fmt.Sprintf("header widget %d", i), &h.Widgets[i], declared); err != nil {
+		where := fmt.Sprintf("header widget %d", i)
+		if h.Widgets[i].Type == WidgetHLine {
+			return fmt.Errorf("%s: a header is one row, so it takes vline, not hline", where)
+		}
+		if err := validateWidget(where, &h.Widgets[i], declared); err != nil {
 			return err
 		}
 	}
-	return nil
+	return checkVLines("header widget", h.Widgets)
 }
 
 func fieldMap(fields []Field) map[string]Field {

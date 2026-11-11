@@ -19,6 +19,11 @@ const (
 	WidgetTag  WidgetType = "tag"
 	WidgetText WidgetType = "text"
 
+	// WidgetHLine and WidgetVLine are separators. They show no value and edit no
+	// field, so they take no source.
+	WidgetHLine WidgetType = "hline"
+	WidgetVLine WidgetType = "vline"
+
 	WidgetControl     WidgetType = "control"
 	WidgetToggle      WidgetType = "toggle"
 	WidgetInput       WidgetType = "input"
@@ -70,12 +75,17 @@ type Widget struct {
 	Options  []string           `yaml:"options,omitempty"`
 	Variants map[string]Variant `yaml:"variants,omitempty"`
 	Style    Style              `yaml:"style,omitempty"`
+	// Intent colours a line. Neutral is the default.
+	Intent Intent `yaml:"intent,omitempty"`
 }
+
+// IsLine reports whether the widget is a separator line.
+func (w Widget) IsLine() bool { return w.Type == WidgetHLine || w.Type == WidgetVLine }
 
 // IsControl reports whether the widget edits a schema field.
 func (w Widget) IsControl() bool {
 	switch w.Type {
-	case WidgetIcon, WidgetTag, WidgetText:
+	case WidgetIcon, WidgetTag, WidgetText, WidgetHLine, WidgetVLine:
 		return false
 	}
 	return true
@@ -132,12 +142,17 @@ func ControlKind(w Widget, field Field) (WidgetType, error) {
 	return kind, nil
 }
 
-const allWidgetTypes = "icon, tag, text, control, toggle, input, textarea, number, date, time, datetime, select, or multiselect"
+const allWidgetTypes = "icon, tag, text, hline, vline, control, toggle, input, textarea, number, date, time, datetime, select, or multiselect"
 
 // validateWidget checks one widget of the header or body against the declared
 // fields. It also fills in the default intent of every variant.
 func validateWidget(where string, w *Widget, fields map[string]Field) error {
+	if w.Intent != "" && !w.IsLine() {
+		return fmt.Errorf("%s: intent applies only to hline and vline (icons and tags take it in variants)", where)
+	}
 	switch w.Type {
+	case WidgetHLine, WidgetVLine:
+		return validateLine(where, w)
 	case WidgetIcon, WidgetTag, WidgetText:
 		return validateDisplay(where, w)
 	case WidgetControl, WidgetToggle, WidgetInput, WidgetTextarea, WidgetNumber,
@@ -148,6 +163,36 @@ func validateWidget(where string, w *Widget, fields map[string]Field) error {
 	default:
 		return fmt.Errorf("%s has unsupported type %q (use %s)", where, w.Type, allWidgetTypes)
 	}
+}
+
+// validateLine checks a separator: it shows no data, so it takes only an
+// intent, which colours it.
+func validateLine(where string, w *Widget) error {
+	if w.Source != "" || w.Label != "" || len(w.Options) != 0 || len(w.Variants) != 0 || w.Style != (Style{}) {
+		return fmt.Errorf("%s: %s takes no source, label, options, variants, or style (only intent)", where, w.Type)
+	}
+	switch w.Intent {
+	case "":
+		w.Intent = IntentNeutral
+	case IntentNeutral, IntentInfo, IntentSuccess, IntentWarning, IntentDanger:
+	default:
+		return fmt.Errorf("%s has unsupported intent %q (use neutral, info, success, warning, or danger)", where, w.Intent)
+	}
+	return nil
+}
+
+// checkVLines rejects a vline that separates nothing: at the start or end of a
+// row, or next to another vline.
+func checkVLines(where string, cells []Widget) error {
+	for i, cell := range cells {
+		if cell.Type != WidgetVLine {
+			continue
+		}
+		if i == 0 || i == len(cells)-1 || cells[i-1].Type == WidgetVLine {
+			return fmt.Errorf("%s cell %d: a vline must sit between two widgets", where, i+1)
+		}
+	}
+	return nil
 }
 
 func validateControl(where string, w *Widget, fields map[string]Field) error {
@@ -208,7 +253,7 @@ func validateDisplay(where string, w *Widget) error {
 // "soure" cannot silently do nothing. An omitted type means `control`.
 func decodeWidget(item *yaml.Node, where string) (Widget, error) {
 	var w Widget
-	if err := checkKeys(item, where, "type", "source", "label", "options", "variants", "style"); err != nil {
+	if err := checkKeys(item, where, "type", "source", "label", "options", "variants", "style", "intent"); err != nil {
 		return w, err
 	}
 	if err := checkWidgetKeys(item, where); err != nil {

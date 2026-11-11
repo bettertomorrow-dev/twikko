@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/a-h/templ"
 
@@ -84,6 +85,71 @@ var bodyRowClass = map[int]string{
 	4: "hidden has-[>*>*]:grid gap-5 grid-cols-1 md:grid-cols-2 lg:grid-cols-4",
 }
 
+// bodyLineRowClass is the grid of a row with vlines, keyed by its widget count
+// without them. Its columns come from the --cols property (see rowColumns): an
+// equal share for a widget and just the line's own width for a vline. The
+// vlines are hidden while the row is stacked. A row of four widgets stacks until
+// lg, as it needs the room.
+var bodyLineRowClass = map[int]string{
+	2: "hidden has-[>*>*]:grid gap-5 grid-cols-1 [&>[role=separator]]:hidden md:grid-cols-(--cols) md:[&>[role=separator]]:block",
+	3: "hidden has-[>*>*]:grid gap-5 grid-cols-1 [&>[role=separator]]:hidden md:grid-cols-(--cols) md:[&>[role=separator]]:block",
+	4: "hidden has-[>*>*]:grid gap-5 grid-cols-1 [&>[role=separator]]:hidden lg:grid-cols-(--cols) lg:[&>[role=separator]]:block",
+}
+
+// Line widget styling. A line is one border wide, coloured by its intent. A
+// vline stretches to the height of its row or of the header, and has no content
+// of its own, so it never changes that height.
+var lineIntentClass = map[schema.Intent]string{
+	schema.IntentNeutral: "border-border",
+	schema.IntentInfo:    "border-info",
+	schema.IntentSuccess: "border-success",
+	schema.IntentWarning: "border-warning",
+	schema.IntentDanger:  "border-destructive",
+}
+
+const (
+	hlineClass = "w-full border-t "
+	vlineClass = "self-stretch border-l "
+)
+
+func lineClass(widget schema.Widget) string {
+	intent := widget.Intent
+	if intent == "" {
+		intent = schema.IntentNeutral
+	}
+	if widget.Type == schema.WidgetHLine {
+		return hlineClass + lineIntentClass[intent]
+	}
+	return vlineClass + lineIntentClass[intent]
+}
+
+// bodyRow describes how one body row lays out. Lines do not count as cells:
+// an hline is a row of its own, and a vline takes the width of its border only.
+func bodyRow(row []schema.Widget) (class, style string) {
+	cells, vlines := 0, 0
+	for _, widget := range row {
+		switch widget.Type {
+		case schema.WidgetHLine:
+			return "", ""
+		case schema.WidgetVLine:
+			vlines++
+		default:
+			cells++
+		}
+	}
+	if vlines == 0 {
+		return bodyRowClass[cells], ""
+	}
+	tracks := make([]string, len(row))
+	for i, widget := range row {
+		tracks[i] = "minmax(0,1fr)"
+		if widget.Type == schema.WidgetVLine {
+			tracks[i] = "auto"
+		}
+	}
+	return bodyLineRowClass[cells], "--cols:" + strings.Join(tracks, " ")
+}
+
 type FieldView struct {
 	Field   schema.Field
 	Value   any
@@ -117,7 +183,9 @@ type EntityView struct {
 
 // RowView is one row of the card body.
 type RowView struct {
-	Class   string
+	Class string
+	// Style sets the --cols property of a row with vlines.
+	Style   string
 	Widgets []WidgetView
 }
 
@@ -204,8 +272,10 @@ func NewPageData(store *session.Store, token string) PageData {
 			view.HasBody = true
 			view.Rows = make([]RowView, len(s.Body.Rows))
 			for r, row := range s.Body.Rows {
+				class, style := bodyRow(row)
 				view.Rows[r] = RowView{
-					Class: bodyRowClass[len(row)],
+					Class: class,
+					Style: style,
 					Widgets: resolveWidgets(row, entity, byName, func(c int) string {
 						return fmt.Sprintf("widget-%d-%d-%d", index, r, c)
 					}, bodyTextWidgetClass),
@@ -255,6 +325,9 @@ func resolveWidgets(widgets []schema.Widget, entity *yaml.Node, fields map[strin
 }
 
 func resolveWidget(widget schema.Widget, entity *yaml.Node, fields map[string]*FieldView, textClass string) WidgetView {
+	if widget.IsLine() {
+		return WidgetView{Type: widget.Type, Class: lineClass(widget)}
+	}
 	if widget.IsControl() {
 		return resolveControl(widget, fields[widget.Source])
 	}
@@ -325,6 +398,19 @@ func headerTitle(widgets []WidgetView, id string) string {
 	return id
 }
 
+// IsLine reports whether the widget is a separator line.
+func (w WidgetView) IsLine() bool {
+	return w.Type == schema.WidgetHLine || w.Type == schema.WidgetVLine
+}
+
+// Orientation is the ARIA orientation of a line.
+func (w WidgetView) Orientation() string {
+	if w.Type == schema.WidgetVLine {
+		return "vertical"
+	}
+	return "horizontal"
+}
+
 func (data PageData) Entity(index int) EntityView {
 	return data.Entities[index]
 }
@@ -372,6 +458,71 @@ func inputType(kind schema.WidgetType) string {
 	default:
 		return "text"
 	}
+}
+
+// A picker input leaves room on the left for the button that opens its popover.
+const pickerInputBaseClass = inputBaseClass + " pl-9 placeholder:text-muted-foreground aria-invalid:border-destructive"
+
+func pickerInputClass(kind schema.WidgetType, header bool) string {
+	switch {
+	case !header:
+		return pickerInputBaseClass + " w-full"
+	case kind == schema.WidgetDateTime:
+		return pickerInputBaseClass + " w-56 py-1"
+	default:
+		return pickerInputBaseClass + " w-44 py-1"
+	}
+}
+
+func pickerIcon(kind schema.WidgetType) string {
+	if kind == schema.WidgetTime {
+		return "clock"
+	}
+	return "calendar"
+}
+
+func pickerButtonLabel(kind schema.WidgetType) string {
+	if kind == schema.WidgetTime {
+		return "Open time picker"
+	}
+	return "Open calendar"
+}
+
+// pickerPlaceholder is the mask of a picker input. static/app.js types digits
+// into the same mask.
+func pickerPlaceholder(kind schema.WidgetType) string {
+	switch kind {
+	case schema.WidgetTime:
+		return "HH:MM"
+	case schema.WidgetDateTime:
+		return "YYYY-MM-DD HH:MM"
+	default:
+		return "YYYY-MM-DD"
+	}
+}
+
+// pickerText is the text in a picker input: the value in the order of its mask.
+// static/app.js writes a value it picks the same way, so the input does not
+// change when it first renders. A value that does not parse stays as it is,
+// next to its validation error.
+func pickerText(widget WidgetView) string {
+	value := String(widget.Field.Value)
+	var layouts []string
+	var out string
+	switch widget.Type {
+	case schema.WidgetTime:
+		layouts, out = []string{"15:04", "15:04:05"}, "15:04"
+	case schema.WidgetDateTime:
+		layouts, out = []string{"2006-01-02T15:04", "2006-01-02T15:04:05"}, "2006-01-02 15:04"
+	default:
+		layouts, out = []string{"2006-01-02"}, "2006-01-02"
+	}
+	for _, layout := range layouts {
+		if parsed, err := time.Parse(layout, value); err == nil {
+			return parsed.Format(out)
+		}
+	}
+	return value
 }
 
 // choices are the options a select offers: an enum's own, or the list a select

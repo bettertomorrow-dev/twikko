@@ -109,7 +109,8 @@ declare are not shown, but they are kept unchanged in the output.
 
 The card header and the card body are built from the same widgets. A widget has
 a `type`, a `source`, and optionally a `label`, `options`, `variants`, and
-`style`. It either shows a value or edits a field.
+`style`, and a line takes `intent`. It either shows a value, edits a field, or
+draws a line.
 
 Display widgets show a value, read-only. `source` is an entity key or a dotted
 path to a scalar, and may point at keys the schema does not declare.
@@ -119,6 +120,17 @@ path to a scalar, and may point at keys the schema does not declare.
   variant gets a neutral diamond.
 - `tag`: the value in a pill. `variants` map a value to an `intent`.
 - `text`: the value as text, with `style` `bold`, `italic`, and `muted`.
+
+Lines separate widgets. They show no value and take no `source`:
+
+- `vline`: a vertical 1px line. In a body row it takes only its own width, and
+  its height is the height of the row. In the header it is as tall as the
+  header's line. It must sit between two widgets.
+- `hline`: a horizontal 1px line. It is a row of its own in the body, with no
+  other widget beside it, and it is not allowed in the header.
+
+A line takes an optional `intent` (`neutral` by default, `info`, `success`,
+`warning`, `danger`) that sets its colour.
 
 Controls edit a field. `source` is the name of a field declared in
 `schema.fields`. `type: control` picks the control from the field's type. Leaving
@@ -165,7 +177,10 @@ unknown template name or icon name fails the load and lists the valid ones.
 
 By default the body shows every field in a two-column grid. `schema.body`
 shapes it as rows of one to four widgets, up to ten rows. A row's widgets share
-its width equally, and every row stacks to one column on a narrow screen. A
+its width equally, and every row stacks to one column on a narrow screen. Lines
+do not count in those limits, and a vline does not take an equal share: the
+row's columns are equal, with a one-pixel gap for each vline. A row with vlines
+stays stacked, without them, until `md` (`lg` for four widgets). A
 display widget with no value leaves an empty slot, so columns keep their place
 across cards, and a text widget wraps long values. **A field that no control in
 the header or body places is hidden** once a body is set, but it stays unchanged
