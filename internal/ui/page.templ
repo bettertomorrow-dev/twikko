@@ -56,7 +56,12 @@ templ EntityCard(data PageData, entity EntityView) {
 			if entity.HasBody {
 				<div class="flex flex-col gap-5 p-5">
 					for _, row := range entity.Rows {
-						<div class={ row.Class }>
+						<div
+							class={ row.Class }
+							if row.Style != "" {
+								style={ templ.SafeCSS(row.Style) }
+							}
+						>
 							for _, widget := range row.Widgets {
 								@Widget(data, entity, widget, false)
 							}
@@ -90,11 +95,19 @@ templ EntityBadges(entity EntityView, oob bool) {
 
 // Widget draws one header or body widget: a control, or a display slot.
 templ Widget(data PageData, entity EntityView, widget WidgetView, header bool) {
-	if widget.Field != nil {
+	if widget.IsLine() {
+		@Line(widget)
+	} else if widget.Field != nil {
 		@Control(data, entity, widget, header)
 	} else {
 		@DisplaySlot(data, widget, header, false)
 	}
+}
+
+// Line is a separator. It has no content, so a vline adds nothing to the height
+// of its row.
+templ Line(widget WidgetView) {
+	<div role="separator" aria-orientation={ widget.Orientation() } class={ widget.Class }></div>
 }
 
 // DisplaySlot is a read-only widget with an optional label. In the header the
@@ -132,13 +145,13 @@ templ DisplayWidget(data PageData, widget WidgetView) {
 // DisplaySlots renders every display slot of a card out of band, header and body.
 templ DisplaySlots(data PageData, entity EntityView) {
 	for _, widget := range entity.Widgets {
-		if widget.Field == nil {
+		if widget.Field == nil && !widget.IsLine() {
 			@DisplaySlot(data, widget, true, true)
 		}
 	}
 	for _, row := range entity.Rows {
 		for _, widget := range row.Widgets {
-			if widget.Field == nil {
+			if widget.Field == nil && !widget.IsLine() {
 				@DisplaySlot(data, widget, false, true)
 			}
 		}
@@ -262,6 +275,8 @@ templ Control(data PageData, entity EntityView, widget WidgetView, header bool) 
 						<span class="text-sm">{ widget.Label }</span>
 					}
 				</label>
+			case schema.WidgetDate, schema.WidgetTime, schema.WidgetDateTime:
+				@Picker(data, entity, widget, header)
 			default:
 				<input
 					id={ fieldID(entity.Index, widget.Field.Field.Name) }
@@ -274,6 +289,49 @@ templ Control(data PageData, entity EntityView, widget WidgetView, header bool) 
 				/>
 		}
 		@FieldStatus(entity.Index, *widget.Field)
+	</div>
+}
+
+// Picker is the date, time and date-time control: a masked text input, so the
+// value can be typed, with a button inside it that opens a calendar popover.
+// The browser draws a native picker outside the page, where no CSS reaches, so
+// static/app.js builds the popover. A hidden input holds the value that the
+// form posts, in the format the native input used. The script writes it and
+// fires change on it.
+templ Picker(data PageData, entity EntityView, widget WidgetView, header bool) {
+	<div data-picker={ string(widget.Type) } data-required?={ widget.Field.Field.Required } data-icons={ data.AssetBase + "icons/" } class="relative">
+		<input
+			type="hidden"
+			name="value"
+			value={ String(widget.Field.Value) }
+			{ controlAttrs(data, entity, widget, false, "change")... }
+		/>
+		<input
+			id={ fieldID(entity.Index, widget.Field.Field.Name) }
+			type="text"
+			inputmode="numeric"
+			autocomplete="off"
+			data-picker-input
+			value={ pickerText(widget) }
+			placeholder={ pickerPlaceholder(widget.Type) }
+			class={ pickerInputClass(widget.Type, header) }
+			disabled?={ widget.Field.Field.Readonly }
+			if header {
+				aria-label={ widget.Field.Field.Label }
+				title={ widget.Field.Field.Label }
+			}
+		/>
+		<button
+			type="button"
+			class="absolute inset-y-0 left-0 flex w-9 items-center justify-center rounded-l-md text-muted-foreground hover:text-foreground disabled:pointer-events-none"
+			disabled?={ widget.Field.Field.Readonly }
+			aria-label={ pickerButtonLabel(widget.Type) }
+			aria-haspopup="dialog"
+			aria-expanded="false"
+			data-picker-trigger
+		>
+			@Icon(data, pickerIcon(widget.Type))
+		</button>
 	</div>
 }
 

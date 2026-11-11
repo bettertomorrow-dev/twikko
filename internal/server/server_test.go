@@ -386,7 +386,7 @@ func TestEachControlKindRenders(t *testing.T) {
 	page := get(t, controlServer(t, controlLayout))
 	for _, want := range []string{
 		`<select id="field-0-status"`, `<select id="field-0-team"`, `<textarea id="field-0-notes"`,
-		`type="checkbox" role="switch"`, ">Blocked</span>", `type="time"`, `type="datetime-local"`,
+		`type="checkbox" role="switch"`, ">Blocked</span>", `data-picker="time"`, `data-picker="datetime"`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("page lacks %q", want)
@@ -453,5 +453,29 @@ func TestTimeAndDateTimeAreValidated(t *testing.T) {
 	}
 	if ok := post(t, server, "/entities/0/fields/when", "value=2026-10-21T09%3A15"); strings.Contains(ok, "must be") {
 		t.Fatalf("a good date-time must be accepted: %s", ok)
+	}
+}
+
+func TestLinesRenderAsSeparators(t *testing.T) {
+	page := get(t, controlServer(t, `  header:
+    - {type: tag, source: key}
+    - {type: vline}
+    - {source: status}
+  body:
+    - - {source: team}
+      - {type: vline, intent: info}
+      - {source: notes}
+    - - {type: hline}
+    - - {source: blocked}
+`))
+	for _, want := range []string{
+		`role="separator" aria-orientation="vertical" class="self-stretch border-l border-border"`,
+		`role="separator" aria-orientation="vertical" class="self-stretch border-l border-info"`,
+		`role="separator" aria-orientation="horizontal" class="w-full border-t border-border"`,
+		`--cols:minmax(0,1fr) auto minmax(0,1fr)`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("page lacks %q", want)
+		}
 	}
 }

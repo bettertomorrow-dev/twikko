@@ -92,11 +92,22 @@ resuming its work.
   screen), else a two-column grid of every field that no header control edits.
   Fields a body does not place are hidden but kept in the output. Display
   widgets refresh on edits without re-rendering a control.
+- Lines are widgets: `vline` and `hline`, 1px, coloured by an optional intent.
+  They take no source and do not count in the body's row and column limits. A
+  vline takes only its own width in the row grid (a `--cols` track of `auto`)
+  and stretches to the row's height, so it never changes the layout. An hline is
+  a row of its own. The header takes vlines only.
 - Put an eye toggle at the header's top left. An open eye means the card is
   expanded, a crossed eye means it is collapsed. Pressing it flips the state.
 - Put card actions, currently only Reset, in an ellipsis dropdown at the right
   of the header.
 - Choose an input control from the field type.
+- Date, time, and date-time fields are a masked text input (`YYYY-MM-DD`,
+  `HH:MM`, `YYYY-MM-DD HH:MM`) with a button that opens a popover from
+  `internal/ui/static/app.js` (calendar grid, hour and minute columns), not the
+  browser's native picker, which CSS cannot style. The user can type digits or
+  pick from the popover. A hidden input carries the value in the native
+  input's format (`2026-10-20`, `14:30`, `2026-10-20T14:30`).
 - Render read-only values as unavailable for editing.
 - Show validation feedback next to the field that caused it.
 - Mark changed fields.

@@ -8,7 +8,8 @@ TABLER_ICONS := eye eye-off dots \
 	bug checkbox bookmark bolt subtask sparkles trending-up target flask bulb \
 	alert-triangle shield-lock help-circle book tool recycle gauge test-pipe rocket \
 	circle-dot circle-check git-pull-request git-pull-request-draft \
-	git-pull-request-closed git-merge messages
+	git-pull-request-closed git-merge messages \
+	calendar clock chevron-left chevron-right
 
 .PHONY: tools vendor generate build test fmt run
 

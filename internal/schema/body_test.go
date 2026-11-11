@@ -179,3 +179,69 @@ entities:
 		t.Fatal(err)
 	}
 }
+
+func TestBodyLinesDoNotCountAgainstLimits(t *testing.T) {
+	// Four cells with three vlines, and ten rows with an hline between each.
+	body := "  body:\n    - - {source: needed}\n      - {type: vline}\n      - {type: text, source: summary}\n      - {type: vline}\n      - {type: text, source: summary}\n      - {type: vline, intent: info}\n      - {type: text, source: summary}\n"
+	for i := 1; i < MaxBodyRows; i++ {
+		body += "    - - {type: hline}\n    - - {type: text, source: summary}\n"
+	}
+	doc, err := parseBody(body+"    - - {type: hline, intent: danger}\n", bodyEntities)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := doc.Schema.Body.Rows[0][1].Intent; got != IntentNeutral {
+		t.Errorf("a line without intent is neutral, got %q", got)
+	}
+	if got := doc.Schema.Body.Rows[0][5].Intent; got != IntentInfo {
+		t.Errorf("a line keeps its intent, got %q", got)
+	}
+}
+
+func TestBodyLineRejections(t *testing.T) {
+	for name, tc := range map[string]struct {
+		body string
+		want string
+	}{
+		"hline with a cell beside it": {"  body:\n" + needed + "    - - {type: hline}\n      - {type: text, source: summary}\n", "an hline takes a row of its own"},
+		"vline first":                 {"  body:\n    - - {type: vline}\n      - {source: needed}\n", "a vline must sit between two widgets"},
+		"vline last":                  {"  body:\n    - - {source: needed}\n      - {type: vline}\n", "a vline must sit between two widgets"},
+		"two vlines in a row":         {"  body:\n    - - {source: needed}\n      - {type: vline}\n      - {type: vline}\n      - {type: text, source: summary}\n", "a vline must sit between two widgets"},
+		"five cells around vlines":    {"  body:\n    - - {source: needed}\n      - {type: vline}\n      - {type: text, source: summary}\n      - {type: text, source: summary}\n      - {type: text, source: summary}\n      - {type: text, source: summary}\n", "5 cells (at most 4)"},
+		"only lines":                  {"  body:\n    - - {type: hline}\n", "has no rows"},
+		"eleven rows beside hlines":   {"  body:\n    - - {type: hline}\n" + strings.Repeat("    - - {type: text, source: summary}\n", MaxBodyRows+1), "at most 10"},
+		"line with a source":          {"  body:\n" + needed + "    - - {type: hline, source: summary}\n", "takes no source"},
+		"line with a label":           {"  body:\n" + needed + "    - - {type: hline, label: x}\n", "takes no source"},
+		"line with unknown intent":    {"  body:\n" + needed + "    - - {type: hline, intent: loud}\n", `unsupported intent "loud"`},
+		"intent on a text widget":     {"  body:\n" + needed + "    - - {type: text, source: summary, intent: info}\n", "intent applies only to hline and vline"},
+		"intent on a control":         {"  body:\n    - - {source: needed, intent: info}\n", "intent applies only to hline and vline"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := parseBody(tc.body, bodyEntities)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("want error containing %q, got %v", tc.want, err)
+			}
+		})
+	}
+}
+
+func TestHeaderLines(t *testing.T) {
+	const fieldsAndBody = "  body:\n" + needed
+	ok := "  header:\n    - {type: text, source: summary}\n    - {type: vline, intent: warning}\n    - {type: tag, source: status}\n"
+	if _, err := parseBody(ok+fieldsAndBody, bodyEntities); err != nil {
+		t.Fatal(err)
+	}
+	for name, tc := range map[string]struct{ header, want string }{
+		"hline":      {"  header:\n    - {type: text, source: summary}\n    - {type: hline}\n", "takes vline, not hline"},
+		"leading":    {"  header:\n    - {type: vline}\n    - {type: text, source: summary}\n", "a vline must sit between two widgets"},
+		"trailing":   {"  header:\n    - {type: text, source: summary}\n    - {type: vline}\n", "a vline must sit between two widgets"},
+		"with value": {"  header:\n    - {type: text, source: summary}\n    - {type: vline, source: x}\n    - {type: tag, source: status}\n", "takes no source"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := parseBody(tc.header+fieldsAndBody, bodyEntities)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("want error containing %q, got %v", tc.want, err)
+			}
+		})
+	}
+}

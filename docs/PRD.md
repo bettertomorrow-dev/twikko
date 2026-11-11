@@ -146,7 +146,12 @@ error lists the valid ones. Unknown keys in a widget fail the load too.
 
 The optional `schema.body` lays the card body out in rows. It is a list of rows,
 each a list of one to four widgets, with at most ten rows. A row's widgets
-share its width equally. A body widget has the same keys and rules as a header
+share its width equally. `hline` and `vline` widgets draw 1px separator lines and
+do not count in those limits: a row holding one `hline` is not one of the ten
+rows, and a `vline` is not one of the four cells. A `vline` takes only its own
+width, with its height the height of its row, so it never changes the layout. It
+must sit between two widgets. An `hline` is a row of its own, and a header takes
+`vline` only. A line takes an optional `intent` for its colour. A body widget has the same keys and rules as a header
 widget (see "Widgets"). A display widget with no value stays an empty slot so
 columns do not shift between cards, and a row with no content at all is hidden.
 A body `text` widget wraps and keeps line breaks.

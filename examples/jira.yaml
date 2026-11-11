@@ -2,7 +2,8 @@
 #
 # Display widgets (icon, tag, text) show a value and follow edits. Controls edit
 # a schema field: leave `type` out and the field's type picks the control, or
-# name one to override it.
+# name one to override it. Lines (hline, vline) separate widgets and do not count
+# against the row and column limits.
 schema:
   id_field: key
   header:
@@ -21,8 +22,11 @@ schema:
     - { source: status }                  # a control in the header: an enum draws a select
   body:
     - - { type: text, source: reporter.name, label: Reporter }   # display, dotted path
+      - { type: vline }                   # a 1px separator: takes its own width, not a column
       - { type: text, source: created, label: Created }
+      - { type: vline }
       - { type: tag, source: status, label: Now }                # follows the header select
+    - - { type: hline, intent: info }     # a row of its own, not counted as a row
     - - { source: summary }               # a text field draws an input
     - - { source: description }           # a longtext field draws a textarea
     - - { source: labels }                # a multienum draws checkboxes
