@@ -58,3 +58,28 @@ entities: [{key: A-1, card_title: [not, scalar]}]
 		t.Fatalf("expected scalar title error, got %v", err)
 	}
 }
+
+func TestParsePageHeading(t *testing.T) {
+	const body = `
+schema:
+  id_field: key
+  fields:
+    - {name: key, type: text}
+entities:
+  - {key: A-1}
+`
+	doc, err := Parse([]byte("title:  Sprint triage \ndescription: Open bugs of the sprint.\n" + body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if doc.Title != "Sprint triage" || doc.Description != "Open bugs of the sprint." {
+		t.Fatalf("title %q, description %q", doc.Title, doc.Description)
+	}
+	doc, err = Parse([]byte(body))
+	if err != nil || doc.Title != "" || doc.Description != "" {
+		t.Fatalf("absent heading should be empty: %v %#v", err, doc)
+	}
+	if _, err := Parse([]byte("title: [a]\n" + body)); err == nil || !strings.Contains(err.Error(), "title must be text") {
+		t.Fatalf("expected a title error, got %v", err)
+	}
+}

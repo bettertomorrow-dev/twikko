@@ -208,21 +208,34 @@ type WidgetView struct {
 }
 
 type PageData struct {
-	Token     string
-	AssetBase string
-	Entities  []EntityView
-	Changes   int
-	HasErrors bool
+	Token       string
+	AssetBase   string
+	Title       string
+	Description string
+	Entities    []EntityView
+	Changes     int
+	HasErrors   bool
+}
+
+const defaultTitle = "Edit entities"
+
+func pageTitle(title string) string {
+	if title == "" {
+		return defaultTitle
+	}
+	return title
 }
 
 func NewPageData(store *session.Store, token string) PageData {
 	s := store.Schema()
 	data := PageData{
-		Token:     token,
-		AssetBase: "/s/" + token + "/assets/",
-		Changes:   store.ChangedCount(),
-		HasErrors: store.HasErrors(),
-		Entities:  make([]EntityView, store.EntityCount()),
+		Token:       token,
+		Title:       pageTitle(store.Title()),
+		Description: store.Description(),
+		AssetBase:   "/s/" + token + "/assets/",
+		Changes:     store.ChangedCount(),
+		HasErrors:   store.HasErrors(),
+		Entities:    make([]EntityView, store.EntityCount()),
 	}
 	inHeader := headerControls(s)
 	for index := range data.Entities {

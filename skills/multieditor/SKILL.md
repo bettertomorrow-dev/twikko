@@ -24,7 +24,7 @@ If `multieditor` is not on `PATH`, stop and tell the user. Do not build it yours
 
 ## Writing the input
 
-The file has `schema` and `entities`. `schema.id_field` names the field that identifies each record. `schema.fields` lists the fields to show, each with `name`, optional `label`, `type`, optional `required` and `readonly`.
+The file has `schema` and `entities`, plus a top-level `title` and `description` that head the page. Always write both. The title names the set of records (`Open bugs, sprint 14`). The description says what the records are and where they came from, in one or two sentences. State facts about the data only. Do not tell the user what to do on the page: it already has Save and Cancel, and a line such as "review and save" is noise. `schema.id_field` names the field that identifies each record. `schema.fields` lists the fields to show, each with `name`, optional `label`, `type`, optional `required` and `readonly`.
 
 - `type` is one of `text`, `longtext`, `number`, `bool`, `enum`, `multienum`, `date`, `time`, `datetime`.
 - `enum` and `multienum` need `options`. No other type may have them. Take the options from the source system, not from guesses. An entity value outside its options makes the whole load fail.

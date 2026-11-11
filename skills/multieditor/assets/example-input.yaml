@@ -3,6 +3,8 @@
 # in bold, and a tag from `status`, which follows the user's edits. `type` and
 # `url` are not in `fields`, so the user cannot edit them, and both come back
 # unchanged in the output.
+title: Open bugs and tasks, sprint 14
+description: Two issues of the example project, exported from its tracker on 2026-11-10.
 schema:
   id_field: key
   header:

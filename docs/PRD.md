@@ -114,7 +114,11 @@ source-system work.
 
 ## Input YAML
 
-The input has `schema` and `entities` keys.
+The input has `schema` and `entities` keys, and optional top-level `title` and
+`description` keys. They head the page and set the browser tab title. A
+description keeps its line breaks. Both must be text. Without a title the page
+reads `Edit entities`, and without a description no text shows under it. The
+page ends with a fixed, non-editable footer reading `a Multieditor, 2026`.
 
 `schema.id_field` names a field that identifies each entity. The optional
 `schema.title_field` names an entity key whose value is the card title. The key

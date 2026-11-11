@@ -69,6 +69,8 @@ input, server, or output error.
 ## Input
 
 ```yaml
+title: Sprint triage                         # optional: page heading and tab title
+description: Open bugs of the current sprint. # optional: text under the heading
 schema:
   id_field: key          # names the field that identifies each entity
   header:                # optional: widgets drawn in the card header

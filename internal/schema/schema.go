@@ -53,8 +53,11 @@ type Schema struct {
 }
 
 type Document struct {
-	Schema   Schema
-	Entities []*yaml.Node
+	// Title and Description head the page. Both are optional.
+	Title       string
+	Description string
+	Schema      Schema
+	Entities    []*yaml.Node
 }
 
 func Load(path string) (*Document, error) {
@@ -128,7 +131,27 @@ func Parse(data []byte) (*Document, error) {
 			}
 		}
 	}
-	return &Document{Schema: s, Entities: entities}, nil
+	title, err := optionalText(doc, "title")
+	if err != nil {
+		return nil, err
+	}
+	description, err := optionalText(doc, "description")
+	if err != nil {
+		return nil, err
+	}
+	return &Document{Title: title, Description: description, Schema: s, Entities: entities}, nil
+}
+
+// optionalText reads a top-level scalar, or "" when the key is absent.
+func optionalText(doc *yaml.Node, key string) (string, error) {
+	node := MapValue(doc, key)
+	if node == nil {
+		return "", nil
+	}
+	if node.Kind != yaml.ScalarNode {
+		return "", fmt.Errorf("%s must be text", key)
+	}
+	return strings.TrimSpace(node.Value), nil
 }
 
 func anyEntityHas(entities []*yaml.Node, source string) bool {
