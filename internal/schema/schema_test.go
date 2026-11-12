@@ -60,6 +60,15 @@ func TestClonePreservesAliasGraph(t *testing.T) {
 	}
 }
 
+func TestYAMLBooleanSpellings(t *testing.T) {
+	for text, want := range map[string]bool{"true": true, "True": true, "TRUE": true, "false": false, "False": false, "FALSE": false} {
+		got, err := ParseNode(Field{Type: Bool}, mustNode(t, text))
+		if err != nil || got != want {
+			t.Errorf("%s: got %v, %v, want %v", text, got, err, want)
+		}
+	}
+}
+
 func TestParseAndValidateValues(t *testing.T) {
 	input := []byte(`
 schema:

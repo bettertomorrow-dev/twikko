@@ -400,7 +400,7 @@ func ParseNode(field Field, node *yaml.Node) (any, error) {
 		if node.Tag != "!!bool" {
 			return nil, errors.New("must be a boolean")
 		}
-		return ParseFormValue(field, []string{node.Value}, true)
+		return strconv.ParseBool(node.Value)
 	default:
 		return ParseFormValue(field, []string{node.Value}, true)
 	}
