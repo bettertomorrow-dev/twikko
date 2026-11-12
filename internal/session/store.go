@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	"go.yaml.in/yaml/v3"
-	"multieditor/internal/schema"
+	"twikko/internal/schema"
 )
 
 type Change struct {

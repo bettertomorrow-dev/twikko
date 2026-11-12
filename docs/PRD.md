@@ -1,11 +1,11 @@
-# multieditor POC product requirements
+# Twikko POC product requirements
 
 ## Summary
 
-multieditor is a temporary local web editor for a set of structured entities.
+Twikko is a temporary local web editor for a set of structured entities.
 An agent writes the entities and an explicit schema to YAML, launches the
 editor, and gives the local URL to the user. The user makes bulk changes in the
-browser. When they save, multieditor writes a YAML result that the agent can
+browser. When they save, Twikko writes a YAML result that the agent can
 apply to Jira, a database, or another source system.
 
 The POC focuses on a safe hand-off between an agent and a person. It does not
@@ -53,7 +53,7 @@ The caller is an agent that prepares input and consumes output.
 ```mermaid
 sequenceDiagram
     participant Agent
-    participant CLI as multieditorCLI
+    participant CLI as TwikkoCLI
     participant Browser
     participant Output as OutputYAML
 
@@ -75,7 +75,7 @@ exits. The agent must not apply changes from a cancelled result.
 ## Command-line interface
 
 ```text
-multieditor --input in.yaml --output out.yaml [--port 0] [--open]
+twikko --input in.yaml --output out.yaml [--port 0] [--open]
 ```
 
 Arguments:
@@ -117,8 +117,8 @@ source-system work.
 The input has `schema` and `entities` keys, and optional top-level `title` and
 `description` keys. They head the page and set the browser tab title. A
 description keeps its line breaks. Both must be text. Without a title the page
-reads `Edit entities`, and without a description no text shows under it. The
-page ends with a fixed, non-editable footer reading `a Multieditor, 2026`.
+reads `Twikko`, and without a description no text shows under it. The
+page ends with a fixed, non-editable footer reading `Twikko, 2026`.
 
 `schema.id_field` names a field that identifies each entity. The optional
 `schema.title_field` names an entity key whose value is the card title. The key
@@ -417,7 +417,7 @@ Feature: edit YAML entities locally
 
   Scenario: Load entities into cards
     Given a valid YAML input with two entities and an explicit schema
-    When the caller starts multieditor
+    When the caller starts Twikko
     Then the CLI prints a URL on 127.0.0.1
     And the browser displays one card for each entity
     And each field uses the control selected by its schema type
@@ -605,7 +605,7 @@ Feature: edit YAML entities locally
     Then the output YAML has status "saved"
     And it includes the full edited entities
     And it records the old and new value in changes
-    And multieditor exits with code 0
+    And Twikko exits with code 0
 
   Scenario: Reject invalid changes
     Given an enum field allows "To Do" and "Done"
@@ -624,7 +624,7 @@ Feature: edit YAML entities locally
     When the user selects Cancel
     Then the output YAML has status "cancelled"
     And it contains no entities
-    And multieditor exits with code 2
+    And Twikko exits with code 2
 
   Scenario: Finish after the agent wait window
     Given the agent has waited five minutes without a result

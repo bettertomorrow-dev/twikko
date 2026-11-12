@@ -3,7 +3,7 @@ package session
 import (
 	"testing"
 
-	"multieditor/internal/schema"
+	"twikko/internal/schema"
 )
 
 func TestEditResetAndChanges(t *testing.T) {

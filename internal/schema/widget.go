@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"go.yaml.in/yaml/v3"
-	"multieditor/internal/icons"
+	"twikko/internal/icons"
 )
 
 // WidgetType is the kind of piece a card header or body can show. The display

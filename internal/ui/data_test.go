@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"multieditor/internal/icons"
-	"multieditor/internal/schema"
-	"multieditor/internal/session"
+	"twikko/internal/icons"
+	"twikko/internal/schema"
+	"twikko/internal/session"
 )
 
 func TestNumberDisplayPreservesPrecision(t *testing.T) {

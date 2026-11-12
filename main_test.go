@@ -22,6 +22,9 @@ func TestRunCancelled(t *testing.T) {
 	if code := run(ctx, []string{"--input", "examples/jira.yaml", "--output", path}, &stdout); code != 2 {
 		t.Fatalf("cancel exit code %d: %s", code, &stdout)
 	}
+	if !strings.HasPrefix(stdout.String(), "twikko: url=") || !strings.Contains(stdout.String(), "twikko: status=cancelled output="+path) {
+		t.Fatalf("unexpected CLI output: %s", &stdout)
+	}
 	data, err := os.ReadFile(path)
 	if err != nil || string(data) != "status: cancelled\n" {
 		t.Fatalf("cancel output: %q, %v", data, err)
@@ -51,7 +54,7 @@ entities: [{key: A-1, summary: before}]
 	if !scanner.Scan() {
 		t.Fatal("missing URL output")
 	}
-	address := strings.TrimPrefix(scanner.Text(), "multieditor: url=")
+	address := strings.TrimPrefix(scanner.Text(), "twikko: url=")
 	go func() {
 		for scanner.Scan() {
 		}

@@ -9,8 +9,8 @@ import (
 	"sync"
 	"testing"
 
-	"multieditor/internal/schema"
-	"multieditor/internal/session"
+	"twikko/internal/schema"
+	"twikko/internal/session"
 )
 
 func TestCompletionCannotOverwriteSavedOutput(t *testing.T) {
@@ -567,6 +567,12 @@ func TestLinesRenderAsSeparators(t *testing.T) {
 }
 
 func TestPageHeadingAndFooter(t *testing.T) {
+	page := get(t, testServer(t))
+	for _, want := range []string{"<title>Twikko</title>", ">Twikko</h1>", "Twikko, 2026"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("default page lacks %q", want)
+		}
+	}
 	doc, err := schema.Parse([]byte(`
 title: Release notes
 description: Entries for the 2.1 release.
@@ -587,7 +593,7 @@ entities: [{key: A-1}]
 	response := httptest.NewRecorder()
 	server.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/s/"+server.token+"/", nil))
 	body := response.Body.String()
-	for _, want := range []string{"<title>Release notes</title>", ">Release notes</h1>", "Entries for the 2.1 release.", "a Multieditor, 2026"} {
+	for _, want := range []string{"<title>Release notes</title>", ">Release notes</h1>", "Entries for the 2.1 release.", "Twikko, 2026"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("page lacks %q", want)
 		}

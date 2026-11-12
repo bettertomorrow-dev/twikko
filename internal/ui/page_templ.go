@@ -11,7 +11,7 @@ import templruntime "github.com/a-h/templ/runtime"
 import (
 	"fmt"
 
-	"multieditor/internal/schema"
+	"twikko/internal/schema"
 )
 
 func Page(data PageData) templ.Component {
@@ -133,7 +133,7 @@ func Page(data PageData) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</div><footer class=\"mt-12 text-center text-xs text-muted-foreground/60 select-none\">a Multieditor, 2026</footer></main>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</div><footer class=\"mt-12 text-center text-xs text-muted-foreground/60 select-none\">Twikko, 2026</footer></main>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

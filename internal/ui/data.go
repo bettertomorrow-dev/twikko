@@ -9,9 +9,9 @@ import (
 	"github.com/a-h/templ"
 
 	"go.yaml.in/yaml/v3"
-	"multieditor/internal/icons"
-	"multieditor/internal/schema"
-	"multieditor/internal/session"
+	"twikko/internal/icons"
+	"twikko/internal/schema"
+	"twikko/internal/session"
 )
 
 // Shared control styling, modelled on shadcn/ui. A read-only field renders as a
@@ -218,7 +218,7 @@ type PageData struct {
 	HasErrors   bool
 }
 
-const defaultTitle = "Edit entities"
+const defaultTitle = "Twikko"
 
 func pageTitle(title string) string {
 	if title == "" {

@@ -1,13 +1,13 @@
 ---
 name: gojira
-description: "Pull Jira tickets through the Atlassian MCP and open them in multieditor for review. Runs only when the user invokes it by name (/gojira or $gojira)."
+description: "Pull Jira tickets through the Atlassian MCP and open them in Twikko for review. Runs only when the user invokes it by name (/gojira or $gojira)."
 disable-model-invocation: true
 argument-hint: "[search criteria: JQL, or plain words like 'my bugs in PROJ']"
 ---
 
 # gojira
 
-Fetch Jira tickets, write them to a YAML file that `multieditor` accepts as input, and open that file in `multieditor` so the user can review the tickets. This skill never changes anything in Jira.
+Fetch Jira tickets, write them to a YAML file that `twikko` accepts as input, and open that file in `twikko` so the user can review the tickets. This skill never changes anything in Jira.
 
 Search criteria from the user: $ARGUMENTS
 
@@ -25,8 +25,8 @@ If that line is empty, the user set none.
 5. **Check completeness.** If `isLast` is false, the result is cut off at 100 tickets. Write what you have and tell the user the result is partial, showing the JQL so they can narrow it. Do not page on silently: a long card list is hard to review.
 6. **Write the YAML** into a fresh directory from `mktemp -d`, as `in.yaml`. Follow `assets/example-input.yaml`. Set the top-level `title` (the sprint, board or query it covers) and `description` (how many tickets, and the JQL used). Describe the data only, and do not tell the user what to do on the page.
 7. **Stop if there are no tickets.** If the search returned none, write no file, say so, and end here.
-8. **Start multieditor.** This needs the tested procedure for starting the tool, handing the user its URL, waiting for Save or Cancel, and handling `continue`: **activate the multieditor skill** and follow it. The input file already exists from step 6, so start from launching the process, with `out.yaml` in the same directory as the output path. When you give the user the URL, add the ticket count and the exact JQL used. If the multieditor skill is not installed, stop and report the path of `in.yaml` instead. Do not improvise the launch.
-9. **Report the outcome** once multieditor exits: the status and the path of `out.yaml`. Every field is read-only, so Save and Cancel both leave nothing to apply. Do not write anything back to Jira.
+8. **Start Twikko.** This needs the tested procedure for starting the tool, handing the user its URL, waiting for Save or Cancel, and handling `continue`: **activate the twikko skill** and follow it. The input file already exists from step 6, so start from launching the process, with `out.yaml` in the same directory as the output path. When you give the user the URL, add the ticket count and the exact JQL used. If the twikko skill is not installed, stop and report the path of `in.yaml` instead. Do not improvise the launch.
+9. **Report the outcome** once Twikko exits: the status and the path of `out.yaml`. Every field is read-only, so Save and Cancel both leave nothing to apply. Do not write anything back to Jira.
 
 ## Mapping Jira to entities
 
@@ -35,13 +35,13 @@ One entity per ticket, one key per row:
 - `key` is the issue key, for example `PROJ-123`.
 - `title` is Jira's `summary` field.
 - `type` is the issue type name from `issuetype`, for example `Epic` or `Task`.
-- `creator` and `assignee` are the person's display name. Omit `assignee` when the ticket is unassigned. Do not write `null`, which multieditor rejects for some types.
+- `creator` and `assignee` are the person's display name. Omit `assignee` when the ticket is unassigned. Do not write `null`, which Twikko rejects for some types.
 - `created` is `YYYY-MM-DD`, cut from the `created` timestamp.
 - `due` is Jira's `duedate`, already `YYYY-MM-DD`. Omit the key when the ticket has no due date: Jira leaves `duedate` out of the response then.
 - `status` is the status name as Jira returns it.
 - `summary` is your own digest of the ticket's `description`: one to three sentences on what is wanted and why. It is not Jira's `summary` field, which is the title. When the description is empty, write `No description.` Do not invent detail from the title.
 
-The card header comes from `header: { template: gojira }` under `schema`, a template built into `multieditor`. It draws an icon for `type`, a tag for `key`, the `title` in bold, and a tag for `status`. It reads exactly those four keys, so keep their names. Do not write `title_field` or a `card_title` key, and do not write widgets yourself. A type or status the template does not know gets a fallback icon or a neutral tag.
+The card header comes from `header: { template: gojira }` under `schema`, a template built into `twikko`. It draws an icon for `type`, a tag for `key`, the `title` in bold, and a tag for `status`. It reads exactly those four keys, so keep their names. Do not write `title_field` or a `card_title` key, and do not write widgets yourself. A type or status the template does not know gets a fallback icon or a neutral tag.
 
 The card body comes from `body: { template: gojira }`, also built in. It shows `creator`, `assignee`, `created` and `due` in one row and `summary` full width below, all as read-only text. It reads exactly those five keys, so keep their names. Do not write rows yourself. The body shows nothing else, so key, title, type and status appear only in the header. Keep declaring every field in `fields` as before. The body hides what it does not show, and the output keeps it.
 
