@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
@@ -8,6 +9,16 @@ import (
 	"multieditor/internal/schema"
 	"multieditor/internal/session"
 )
+
+func TestNumberDisplayPreservesPrecision(t *testing.T) {
+	for _, value := range []float64{0.0000001, 1.23456789, -0.0000001, 0, 42} {
+		text := String(value)
+		got, err := strconv.ParseFloat(text, 64)
+		if err != nil || got != value {
+			t.Errorf("%v displayed as %q", value, text)
+		}
+	}
+}
 
 const testFields = `
   fields:

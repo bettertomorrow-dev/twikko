@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/a-h/templ"
@@ -30,6 +31,9 @@ type Event struct {
 }
 
 type Server struct {
+	// Serialize edits and completion for this single-user session.
+	mu          sync.Mutex
+	finished    bool
 	store       *session.Store
 	outputPath  string
 	token       string
@@ -69,9 +73,9 @@ func (s *Server) URL(addr string) string {
 }
 
 func (s *Server) Cancel() error {
-	err := output.WriteAtomic(s.outputPath, output.Cancelled())
-	s.signal(Event{Status: "cancelled", Err: err})
-	return err
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.finish(output.Cancelled())
 }
 
 func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
@@ -129,6 +133,12 @@ func (s *Server) serveAsset(w http.ResponseWriter, r *http.Request, name string)
 func (s *Server) requireWriteHost(w http.ResponseWriter, r *http.Request, next func(http.ResponseWriter, *http.Request)) {
 	if s.allowedHost != "" && r.Host != s.allowedHost {
 		http.Error(w, "invalid Host header", http.StatusForbidden)
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.finished {
+		http.Error(w, "session has ended", http.StatusConflict)
 		return
 	}
 	next(w, r)
@@ -206,16 +216,15 @@ func (s *Server) save(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "fix validation errors before saving", http.StatusUnprocessableEntity)
 		return
 	}
-	if err := output.WriteAtomic(s.outputPath, output.Saved(s.store, time.Now())); err != nil {
+	if err := s.finish(output.Saved(s.store, time.Now())); err != nil {
 		http.Error(w, "write output: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	s.render(w, ui.DonePage(true))
-	s.signal(Event{Status: "saved"})
 }
 
 func (s *Server) cancel(w http.ResponseWriter, r *http.Request) {
-	if err := s.Cancel(); err != nil {
+	if err := s.finish(output.Cancelled()); err != nil {
 		http.Error(w, "write output: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -232,11 +241,17 @@ func (s *Server) renderOOBSaveBar(w io.Writer, data ui.PageData) {
 	s.render(w, ui.SaveBar(data, true))
 }
 
-func (s *Server) signal(event Event) {
-	select {
-	case s.done <- event:
-	default:
+// finish runs with mu held. Failed writes leave the session open for retry.
+func (s *Server) finish(result output.Result) error {
+	if s.finished {
+		return nil
 	}
+	if err := output.WriteAtomic(s.outputPath, result); err != nil {
+		return err
+	}
+	s.finished = true
+	s.done <- Event{Status: result.Status}
+	return nil
 }
 
 func randomToken() (string, error) {

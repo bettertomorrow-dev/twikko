@@ -3,6 +3,7 @@ package schema
 import (
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -293,7 +294,7 @@ func ParseFormValue(field Field, values []string, present bool) (any, error) {
 	if field.Type == Bool && !present {
 		return false, nil
 	}
-	if len(values) == 0 {
+	if len(values) == 0 || (values[0] == "" && field.Type != Bool && field.Type != MultiEnum) {
 		if field.Required {
 			return nil, errors.New("is required")
 		}
@@ -309,25 +310,26 @@ func ParseFormValue(field Field, values []string, present bool) (any, error) {
 		}
 		return values[0], nil
 	case Number:
-		if values[0] == "" {
-			if field.Required {
-				return nil, errors.New("is required")
-			}
-			return "", nil
-		}
 		n, err := strconv.ParseFloat(values[0], 64)
-		if err != nil {
+		if err != nil || math.IsNaN(n) || math.IsInf(n, 0) {
 			return nil, errors.New("must be a number")
 		}
 		return n, nil
 	case Bool:
-		return values[0] == "on" || values[0] == "true", nil
+		switch values[0] {
+		case "on", "true":
+			return true, nil
+		case "off", "false":
+			return false, nil
+		default:
+			return nil, errors.New("must be a boolean")
+		}
 	case Date:
-		return parseTemporal(field, values[0], "must be a valid date", "2006-01-02")
+		return parseTemporal(values[0], "must be a valid date", "2006-01-02")
 	case Time:
-		return parseTemporal(field, values[0], "must be a time such as 14:30", "15:04", "15:04:05")
+		return parseTemporal(values[0], "must be a time such as 14:30", "15:04", "15:04:05")
 	case DateTime:
-		return parseTemporal(field, values[0], "must be a date and time such as 2026-10-20T14:30", "2006-01-02T15:04", "2006-01-02T15:04:05")
+		return parseTemporal(values[0], "must be a date and time such as 2026-10-20T14:30", "2006-01-02T15:04", "2006-01-02T15:04:05")
 	case Enum:
 		if !contains(field.Options, values[0]) {
 			return nil, fmt.Errorf("must be one of: %s", strings.Join(field.Options, ", "))
@@ -345,13 +347,7 @@ func ParseFormValue(field Field, values []string, present bool) (any, error) {
 	}
 }
 
-func parseTemporal(field Field, value, message string, layouts ...string) (any, error) {
-	if value == "" {
-		if field.Required {
-			return nil, errors.New("is required")
-		}
-		return "", nil
-	}
+func parseTemporal(value, message string, layouts ...string) (any, error) {
 	for _, layout := range layouts {
 		if _, err := time.Parse(layout, value); err == nil {
 			return value, nil
@@ -361,6 +357,10 @@ func parseTemporal(field Field, value, message string, layouts ...string) (any, 
 }
 
 func ParseNode(field Field, node *yaml.Node) (any, error) {
+	node = deref(node)
+	if node == nil || (field.Type != MultiEnum && node.Kind != yaml.ScalarNode) {
+		return nil, errors.New("must be a scalar")
+	}
 	switch field.Type {
 	case MultiEnum:
 		if node.Kind != yaml.SequenceNode {
@@ -368,6 +368,10 @@ func ParseNode(field Field, node *yaml.Node) (any, error) {
 		}
 		values := make([]string, len(node.Content))
 		for i, value := range node.Content {
+			value = deref(value)
+			if value == nil || value.Kind != yaml.ScalarNode {
+				return nil, errors.New("options must be scalars")
+			}
 			values[i] = value.Value
 		}
 		return ParseFormValue(field, values, true)
@@ -375,7 +379,7 @@ func ParseNode(field Field, node *yaml.Node) (any, error) {
 		if node.Tag != "!!bool" {
 			return nil, errors.New("must be a boolean")
 		}
-		return ParseFormValue(field, []string{node.Value}, true)
+		return strconv.ParseBool(node.Value)
 	default:
 		return ParseFormValue(field, []string{node.Value}, true)
 	}
@@ -404,15 +408,23 @@ func SetMapValue(node *yaml.Node, key string, value *yaml.Node) {
 }
 
 func Clone(node *yaml.Node) *yaml.Node {
+	return clone(node, make(map[*yaml.Node]*yaml.Node))
+}
+
+func clone(node *yaml.Node, seen map[*yaml.Node]*yaml.Node) *yaml.Node {
 	if node == nil {
 		return nil
 	}
+	if copy, ok := seen[node]; ok {
+		return copy
+	}
 	copy := *node
+	seen[node] = &copy
 	copy.Content = make([]*yaml.Node, len(node.Content))
 	for i, child := range node.Content {
-		copy.Content[i] = Clone(child)
+		copy.Content[i] = clone(child, seen)
 	}
-	copy.Alias = Clone(node.Alias)
+	copy.Alias = clone(node.Alias, seen)
 	return &copy
 }
 

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -446,7 +447,7 @@ func String(value any) string {
 	case string:
 		return typed
 	case float64:
-		return strings.TrimRight(strings.TrimRight(fmt.Sprintf("%f", typed), "0"), ".")
+		return strconv.FormatFloat(typed, 'f', -1, 64)
 	case bool:
 		if typed {
 			return "true"

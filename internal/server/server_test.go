@@ -6,11 +6,91 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"multieditor/internal/schema"
 	"multieditor/internal/session"
 )
+
+func TestCompletionCannotOverwriteSavedOutput(t *testing.T) {
+	server := testServer(t)
+	post(t, server, "/entities/0/fields/summary", "value=after")
+	post(t, server, "/save", "")
+	before, err := os.ReadFile(server.outputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := server.Cancel(); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"cancel", "save", "entities/0/reset", "entities/0/fields/summary"} {
+		request := httptest.NewRequest(http.MethodPost, "/s/"+server.Token()+"/"+path, nil)
+		request.Host = "127.0.0.1:1234"
+		response := httptest.NewRecorder()
+		server.ServeHTTP(response, request)
+		if response.Code != http.StatusConflict {
+			t.Errorf("%s after save: %d", path, response.Code)
+		}
+	}
+	after, err := os.ReadFile(server.outputPath)
+	if err != nil || string(before) != string(after) {
+		t.Fatalf("completion overwrote the saved result: %v", err)
+	}
+}
+
+func TestConcurrentCompletionMatchesOutput(t *testing.T) {
+	server := testServer(t)
+	var requests sync.WaitGroup
+	for _, path := range []string{"save", "cancel"} {
+		requests.Go(func() {
+			request := httptest.NewRequest(http.MethodPost, "/s/"+server.Token()+"/"+path, nil)
+			request.Host = "127.0.0.1:1234"
+			server.ServeHTTP(httptest.NewRecorder(), request)
+		})
+	}
+	requests.Wait()
+	event := <-server.Done()
+	data, err := os.ReadFile(server.outputPath)
+	if err != nil || !strings.Contains(string(data), "status: "+event.Status) {
+		t.Fatalf("completion event and output disagree: %s, %v, %v", data, event, err)
+	}
+	select {
+	case extra := <-server.Done():
+		t.Fatalf("second completion: %v", extra)
+	default:
+	}
+}
+
+func TestFailedCancelCanBeRetried(t *testing.T) {
+	server := testServer(t)
+	server.outputPath = filepath.Join(t.TempDir(), "missing", "out.yaml")
+	if err := server.Cancel(); err == nil {
+		t.Fatal("expected output error")
+	}
+	select {
+	case event := <-server.Done():
+		t.Fatalf("failed cancel ended the session: %v", event)
+	default:
+	}
+	server.outputPath = filepath.Join(t.TempDir(), "out.yaml")
+	post(t, server, "/save", "")
+}
+
+func TestRequiredTextEditBlocksSave(t *testing.T) {
+	server := testServer(t)
+	body := post(t, server, "/entities/0/fields/summary", "value=")
+	if !strings.Contains(body, "is required") {
+		t.Fatal("missing field validation feedback")
+	}
+	request := httptest.NewRequest(http.MethodPost, "/s/"+server.Token()+"/save", nil)
+	request.Host = "127.0.0.1:1234"
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("invalid edit saved: %d", response.Code)
+	}
+}
 
 func testServer(t *testing.T) *Server {
 	t.Helper()
@@ -153,7 +233,6 @@ func TestAssetsServeOnlyKnownFiles(t *testing.T) {
 		"/assets/styles.css":         http.StatusOK,
 		"/assets/icons/eye.svg":      http.StatusOK,
 		"/assets/icons/missing.svg":  http.StatusNotFound,
-		"/assets/icons/../app.js":    http.StatusTemporaryRedirect, // the mux cleans the path before the handler
 		"/assets/icons/eye.svg/more": http.StatusNotFound,
 		"/assets/icons/LICENSE":      http.StatusNotFound,
 	} {
@@ -162,6 +241,13 @@ func TestAssetsServeOnlyKnownFiles(t *testing.T) {
 		if response.Code != want {
 			t.Errorf("%s: got %d, want %d", path, response.Code, want)
 		}
+	}
+	// ServeMux's redirect status varies across Go versions; the cleaned path is
+	// what matters here.
+	redirect := httptest.NewRecorder()
+	server.ServeHTTP(redirect, httptest.NewRequest(http.MethodGet, "/s/"+server.Token()+"/assets/icons/../app.js", nil))
+	if redirect.Code < 300 || redirect.Code >= 400 || redirect.Header().Get("Location") != "/s/"+server.Token()+"/assets/app.js" {
+		t.Fatalf("unexpected path cleanup: %d %s", redirect.Code, redirect.Header().Get("Location"))
 	}
 	response := httptest.NewRecorder()
 	server.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/s/"+server.Token()+"/assets/icons/eye.svg", nil))
