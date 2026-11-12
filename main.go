@@ -16,9 +16,9 @@ import (
 	"syscall"
 	"time"
 
-	"multieditor/internal/schema"
-	"multieditor/internal/server"
-	"multieditor/internal/session"
+	"twikko/internal/schema"
+	"twikko/internal/server"
+	"twikko/internal/session"
 )
 
 func main() {
@@ -28,38 +28,38 @@ func main() {
 }
 
 func run(ctx context.Context, args []string, stdout io.Writer) int {
-	flags := flag.NewFlagSet("multieditor", flag.ContinueOnError)
+	flags := flag.NewFlagSet("twikko", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	input := flags.String("input", "", "input YAML file")
 	output := flags.String("output", "", "output YAML file")
 	port := flags.Int("port", 0, "localhost port")
 	open := flags.Bool("open", false, "open the editor in a browser")
 	if err := flags.Parse(args); err != nil {
-		fmt.Fprintln(stdout, "multieditor: error="+err.Error())
+		fmt.Fprintln(stdout, "twikko: error="+err.Error())
 		return 1
 	}
 	if *input == "" || *output == "" || *port < 0 || *port > 65535 {
-		fmt.Fprintln(stdout, "multieditor: error=--input and --output are required; --port must be valid")
+		fmt.Fprintln(stdout, "twikko: error=--input and --output are required; --port must be valid")
 		return 1
 	}
 	document, err := schema.Load(*input)
 	if err != nil {
-		fmt.Fprintln(stdout, "multieditor: error="+err.Error())
+		fmt.Fprintln(stdout, "twikko: error="+err.Error())
 		return 1
 	}
 	absoluteOutput, err := filepath.Abs(*output)
 	if err != nil {
-		fmt.Fprintln(stdout, "multieditor: error=resolve output: "+err.Error())
+		fmt.Fprintln(stdout, "twikko: error=resolve output: "+err.Error())
 		return 1
 	}
 	editor, err := server.New(session.New(document), absoluteOutput)
 	if err != nil {
-		fmt.Fprintln(stdout, "multieditor: error="+err.Error())
+		fmt.Fprintln(stdout, "twikko: error="+err.Error())
 		return 1
 	}
 	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", *port))
 	if err != nil {
-		fmt.Fprintln(stdout, "multieditor: error=listen: "+err.Error())
+		fmt.Fprintln(stdout, "twikko: error=listen: "+err.Error())
 		return 1
 	}
 	httpServer := &http.Server{Handler: editor}
@@ -70,10 +70,10 @@ func run(ctx context.Context, args []string, stdout io.Writer) int {
 		serveErrors <- httpServer.Serve(listener)
 	}()
 
-	fmt.Fprintln(stdout, "multieditor: url="+url)
+	fmt.Fprintln(stdout, "twikko: url="+url)
 	if *open {
 		if err := openBrowser(url); err != nil {
-			fmt.Fprintln(stdout, "multieditor: warning=open browser: "+err.Error())
+			fmt.Fprintln(stdout, "twikko: warning=open browser: "+err.Error())
 		}
 	}
 
@@ -92,7 +92,7 @@ func run(ctx context.Context, args []string, stdout io.Writer) int {
 	status := event.Status
 	exitCode := 2
 	if event.Err != nil && !errors.Is(event.Err, http.ErrServerClosed) {
-		fmt.Fprintln(stdout, "multieditor: error="+event.Err.Error())
+		fmt.Fprintln(stdout, "twikko: error="+event.Err.Error())
 		exitCode = 1
 	} else if status == "saved" {
 		exitCode = 0
@@ -101,7 +101,7 @@ func run(ctx context.Context, args []string, stdout io.Writer) int {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	_ = httpServer.Shutdown(shutdownCtx)
-	fmt.Fprintf(stdout, "multieditor: status=%s output=%s\n", status, absoluteOutput)
+	fmt.Fprintf(stdout, "twikko: status=%s output=%s\n", status, absoluteOutput)
 	return exitCode
 }
 

@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Run the current source of Twikko from any directory.
+# Symlink this file onto PATH as `twikko`. Build output goes to stderr so
+# stdout carries only Twikko's own output (the URL, the final status).
+set -euo pipefail
+
+self="$(realpath "${BASH_SOURCE[0]}")"
+repo="$(dirname "$(dirname "$self")")"
+
+{
+  make -s -C "$repo" generate
+  go build -C "$repo" -o "$repo/bin/twikko" .
+} >&2
+
+exec "$repo/bin/twikko" "$@"

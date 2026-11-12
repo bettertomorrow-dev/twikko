@@ -1,14 +1,14 @@
-# multieditor
+# Twikko
 
 ## Purpose
 
-multieditor is a local CLI utility for editing a group of structured entities in
+Twikko is a local CLI utility for editing a group of structured entities in
 a browser. An entity is a composite object such as a Jira issue, a database row,
 or another record with named fields.
 
 The tool is designed for an agentic workflow. An agent prepares a YAML input
-file, starts multieditor, then waits for the user to review and change the
-entities in a temporary local web UI. multieditor writes the result to YAML
+file, starts Twikko, then waits for the user to review and change the
+entities in a temporary local web UI. Twikko writes the result to YAML
 after the user saves or cancels. The agent then applies the saved changes to
 the source system.
 
@@ -34,16 +34,16 @@ Out of scope for the POC:
 ## Agent interaction protocol
 
 1. The agent creates an input YAML file and chooses an output YAML path.
-2. The agent launches `multieditor --input <path> --output <path>` as a
+2. The agent launches `twikko --input <path> --output <path>` as a
    background process.
-3. multieditor prints its localhost URL to stdout. The agent gives that URL to
+3. Twikko prints its localhost URL to stdout. The agent gives that URL to
    the user.
 4. The user edits the entities and selects Save or Cancel.
-5. multieditor writes the output, reports the final status and output path to
+5. Twikko writes the output, reports the final status and output path to
    stdout, then exits.
 6. The agent reads the output and applies the changes to the source system.
 
-The agent waits up to five minutes for multieditor to exit. If it does not exit
+The agent waits up to five minutes for Twikko to exit. If it does not exit
 in that time, the agent stops its current loop and tells the user to say
 `continue` after they finish editing. The web server remains available. On a
 later `continue`, the agent checks the output file and process status before
@@ -140,6 +140,6 @@ The POC product requirements live in [docs/PRD.md](docs/PRD.md).
 - `make generate` runs `templ` and compiles Tailwind CSS.
 - `make fmt` formats Go and templ files.
 - `make test` runs the Go test suite.
-- `make build` creates `bin/multieditor`.
+- `make build` creates `bin/twikko`.
 - `make run` starts the example editor and writes its output to
-  `/tmp/multieditor-out.yaml`.
+  `/tmp/twikko-out.yaml`.

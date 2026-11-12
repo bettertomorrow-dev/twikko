@@ -1,4 +1,4 @@
-module multieditor
+module twikko
 
 go 1.25.0
 

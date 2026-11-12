@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"go.yaml.in/yaml/v3"
-	"multieditor/internal/session"
+	"twikko/internal/session"
 )
 
 type Change struct {
@@ -48,7 +48,7 @@ func WriteAtomic(path string, result Result) error {
 		return fmt.Errorf("marshal result: %w", err)
 	}
 	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, ".multieditor-*")
+	tmp, err := os.CreateTemp(dir, ".twikko-*")
 	if err != nil {
 		return fmt.Errorf("create output temp file: %w", err)
 	}

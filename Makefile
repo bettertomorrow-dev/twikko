@@ -41,7 +41,7 @@ generate:
 	$(TAILWIND) -i internal/ui/input.css -o internal/ui/static/styles.css --minify
 
 build:
-	go build -o bin/multieditor .
+	go build -o bin/twikko .
 
 test:
 	go test ./...
@@ -51,4 +51,4 @@ fmt:
 	go tool templ fmt internal/ui
 
 run:
-	go run . --input examples/jira.yaml --output /tmp/multieditor-out.yaml --open
+	go run . --input examples/jira.yaml --output /tmp/twikko-out.yaml --open

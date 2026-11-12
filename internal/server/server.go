@@ -15,10 +15,10 @@ import (
 	"time"
 
 	"github.com/a-h/templ"
-	"multieditor/internal/icons"
-	"multieditor/internal/output"
-	"multieditor/internal/session"
-	"multieditor/internal/ui"
+	"twikko/internal/icons"
+	"twikko/internal/output"
+	"twikko/internal/session"
+	"twikko/internal/ui"
 )
 
 // assetName lists what /assets/ serves: the stylesheet, the scripts and the

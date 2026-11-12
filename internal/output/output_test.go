@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"multieditor/internal/schema"
-	"multieditor/internal/session"
+	"twikko/internal/schema"
+	"twikko/internal/session"
 )
 
 func TestWriteAtomic(t *testing.T) {
@@ -28,7 +28,7 @@ func TestWriteAtomic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) != 1 || strings.HasPrefix(entries[0].Name(), ".multieditor-") {
+	if len(entries) != 1 || strings.HasPrefix(entries[0].Name(), ".twikko-") {
 		t.Fatalf("unexpected directory entries: %#v", entries)
 	}
 }

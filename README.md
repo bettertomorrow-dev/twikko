@@ -1,22 +1,22 @@
-# multieditor
+# Twikko
 
-multieditor is a small CLI that opens a temporary local web page for editing a
+Twikko is a small CLI that opens a temporary local web page for editing a
 group of structured records, such as Jira issues or database rows. It is built
 for a hand-off between an AI agent and a person: the agent writes the records
 to YAML, the person reviews and edits them as cards in a browser, and the agent
 reads back a YAML result and applies it to the source system.
 
-multieditor never talks to Jira, a database, or any other service. It reads one
+Twikko never talks to Jira, a database, or any other service. It reads one
 YAML file, serves a page on `127.0.0.1` until the person saves or cancels, then
 writes one YAML file and exits.
 
 ## How it works
 
 1. The agent writes an input YAML file with a schema and the entities.
-2. The agent starts `multieditor` in the background and gives the user the URL
+2. The agent starts `twikko` in the background and gives the user the URL
    it prints.
 3. The user edits the cards in the browser and selects **Save** or **Cancel**.
-4. multieditor writes the output file, prints the final status, and exits.
+4. Twikko writes the output file, prints the final status, and exits.
 5. The agent reads the output and applies the `changes` to the source system.
 
 ## Quick start
@@ -24,18 +24,18 @@ writes one YAML file and exits.
 You need Go 1.25 or newer.
 
 ```sh
-git clone git@github.com:bettertomorrow-dev/multieditor.git
-cd multieditor
-go build -o bin/multieditor .
+git clone git@github.com:bettertomorrow-dev/twikko.git
+cd twikko
+go build -o bin/twikko .
 
-bin/multieditor --input examples/jira.yaml --output /tmp/out.yaml --open
+bin/twikko --input examples/jira.yaml --output /tmp/out.yaml --open
 ```
 
 The command prints the editor URL and keeps running until you save or cancel:
 
 ```text
-multieditor: url=http://127.0.0.1:54321/s/<token>/
-multieditor: status=saved output=/tmp/out.yaml
+twikko: url=http://127.0.0.1:54321/s/<token>/
+twikko: status=saved output=/tmp/out.yaml
 ```
 
 The generated templ code and the compiled CSS are committed, so a plain
@@ -45,7 +45,7 @@ changing the UI.
 ## Command line
 
 ```text
-multieditor --input in.yaml --output out.yaml [--port 0] [--open]
+twikko --input in.yaml --output out.yaml [--port 0] [--open]
 ```
 
 | Flag       | Meaning                                                              |
@@ -55,13 +55,13 @@ multieditor --input in.yaml --output out.yaml [--port 0] [--open]
 | `--port`   | Port on `127.0.0.1`. The default `0` picks a free port.              |
 | `--open`   | Open the URL in the default browser.                                 |
 
-multieditor writes these lines to standard output:
+Twikko writes these lines to standard output:
 
 | Line                                       | When                         |
 | ------------------------------------------ | ---------------------------- |
-| `multieditor: url=<url>`                   | The editor is ready.         |
-| `multieditor: status=<saved\|cancelled> output=<path>` | The session ended. |
-| `multieditor: error=<message>`             | Something failed.            |
+| `twikko: url=<url>`                   | The editor is ready.         |
+| `twikko: status=<saved\|cancelled> output=<path>` | The session ended. |
+| `twikko: error=<message>`             | Something failed.            |
 
 Exit codes: `0` after a save, `2` after a cancel (including Ctrl+C), `1` for an
 input, server, or output error.
@@ -228,10 +228,10 @@ The full requirements are in [docs/PRD.md](docs/PRD.md).
 
 ## Use it from an agent
 
-[`skills/multieditor`](skills/multieditor/SKILL.md) is an agent skill that
+[`skills/twikko`](skills/twikko/SKILL.md) is an agent skill that
 explains how to write the input, start the tool, wait for the user, and read the
 result. [`skills/gojira`](skills/gojira/SKILL.md) pulls Jira tickets through the
-Atlassian MCP and opens them in multieditor. It runs only when you invoke it by
+Atlassian MCP and opens them in Twikko. It runs only when you invoke it by
 name. Both are linked into `.claude/skills`, `.agents/skills`, and
 `.codex/skills`, so Claude Code, Codex, and other agents pick them up inside
 this repository.
@@ -240,7 +240,7 @@ To run the latest source from any directory, link the dev wrapper onto your
 `PATH`:
 
 ```sh
-ln -s "$PWD/scripts/multieditor-dev" ~/.local/bin/multieditor
+ln -s "$PWD/scripts/twikko-dev" ~/.local/bin/twikko
 ```
 
 The wrapper regenerates the UI, rebuilds, and then runs the binary with your
@@ -259,8 +259,8 @@ embedded into the binary with `go:embed`.
 | `make generate` | Run templ and compile the CSS.                                      |
 | `make fmt`      | Format Go and templ files.                                          |
 | `make test`     | Run the Go tests.                                                   |
-| `make build`    | Build `bin/multieditor`.                                            |
-| `make run`      | Start the example editor, writing to `/tmp/multieditor-out.yaml`.   |
+| `make build`    | Build `bin/twikko`.                                            |
+| `make run`      | Start the example editor, writing to `/tmp/twikko-out.yaml`.   |
 
 After you change a `.templ` file or `internal/ui/input.css`, run
 `make generate` and commit the regenerated files.
@@ -275,8 +275,8 @@ internal/session     In-memory edit state and change tracking
 internal/output      Atomic YAML output writer
 internal/server      HTTP and HTMX handlers, token check, asset allowlist
 internal/ui          templ components, Tailwind input, embedded static files
-skills/multieditor   Agent skill for running the tool
-skills/gojira        Agent skill that pulls Jira tickets into multieditor
+skills/twikko        Agent skill for running the tool
+skills/gojira        Agent skill that pulls Jira tickets into Twikko
 examples/            Sample input files
 docs/PRD.md          Product requirements
 AGENTS.md            Instructions for coding agents working on this repo
@@ -302,7 +302,7 @@ memory and ends with the process.
 
 ## License
 
-multieditor is released under the MIT License; see [LICENSE](LICENSE). The
+Twikko is released under the MIT License; see [LICENSE](LICENSE). The
 vendored Tabler icons are also MIT licensed; see
 `internal/icons/svg/LICENSE`. HTMX is vendored as
 `internal/ui/static/htmx.min.js`.
