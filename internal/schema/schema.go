@@ -294,7 +294,7 @@ func ParseFormValue(field Field, values []string, present bool) (any, error) {
 	if field.Type == Bool && !present {
 		return false, nil
 	}
-	if len(values) == 0 {
+	if len(values) == 0 || (values[0] == "" && field.Type != Bool && field.Type != MultiEnum) {
 		if field.Required {
 			return nil, errors.New("is required")
 		}
@@ -305,20 +305,11 @@ func ParseFormValue(field Field, values []string, present bool) (any, error) {
 	}
 	switch field.Type {
 	case Text, LongText:
-		if field.Required && values[0] == "" {
-			return nil, errors.New("is required")
-		}
 		if len(field.Choices) != 0 && values[0] != "" && !contains(field.Choices, values[0]) {
 			return nil, fmt.Errorf("must be one of: %s", strings.Join(field.Choices, ", "))
 		}
 		return values[0], nil
 	case Number:
-		if values[0] == "" {
-			if field.Required {
-				return nil, errors.New("is required")
-			}
-			return "", nil
-		}
 		n, err := strconv.ParseFloat(values[0], 64)
 		if err != nil || math.IsNaN(n) || math.IsInf(n, 0) {
 			return nil, errors.New("must be a number")
@@ -334,18 +325,12 @@ func ParseFormValue(field Field, values []string, present bool) (any, error) {
 			return nil, errors.New("must be a boolean")
 		}
 	case Date:
-		return parseTemporal(field, values[0], "must be a valid date", "2006-01-02")
+		return parseTemporal(values[0], "must be a valid date", "2006-01-02")
 	case Time:
-		return parseTemporal(field, values[0], "must be a time such as 14:30", "15:04", "15:04:05")
+		return parseTemporal(values[0], "must be a time such as 14:30", "15:04", "15:04:05")
 	case DateTime:
-		return parseTemporal(field, values[0], "must be a date and time such as 2026-10-20T14:30", "2006-01-02T15:04", "2006-01-02T15:04:05")
+		return parseTemporal(values[0], "must be a date and time such as 2026-10-20T14:30", "2006-01-02T15:04", "2006-01-02T15:04:05")
 	case Enum:
-		if values[0] == "" {
-			if field.Required {
-				return nil, errors.New("is required")
-			}
-			return "", nil
-		}
 		if !contains(field.Options, values[0]) {
 			return nil, fmt.Errorf("must be one of: %s", strings.Join(field.Options, ", "))
 		}
@@ -362,13 +347,7 @@ func ParseFormValue(field Field, values []string, present bool) (any, error) {
 	}
 }
 
-func parseTemporal(field Field, value, message string, layouts ...string) (any, error) {
-	if value == "" {
-		if field.Required {
-			return nil, errors.New("is required")
-		}
-		return "", nil
-	}
+func parseTemporal(value, message string, layouts ...string) (any, error) {
 	for _, layout := range layouts {
 		if _, err := time.Parse(layout, value); err == nil {
 			return value, nil
