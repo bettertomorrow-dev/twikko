@@ -14,6 +14,20 @@ import (
 	"time"
 )
 
+func TestRunCancelled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	path := filepath.Join(t.TempDir(), "output.yaml")
+	var stdout bytes.Buffer
+	if code := run(ctx, []string{"--input", "examples/jira.yaml", "--output", path}, &stdout); code != 2 {
+		t.Fatalf("cancel exit code %d: %s", code, &stdout)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || string(data) != "status: cancelled\n" {
+		t.Fatalf("cancel output: %q, %v", data, err)
+	}
+}
+
 func TestRunSave(t *testing.T) {
 	input := filepath.Join(t.TempDir(), "input.yaml")
 	output := filepath.Join(t.TempDir(), "output.yaml")

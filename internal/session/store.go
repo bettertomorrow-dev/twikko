@@ -74,18 +74,7 @@ func (s *Store) FieldValue(index int, field schema.Field) any {
 	if index < 0 || index >= len(s.current) {
 		return ""
 	}
-	value := schema.MapValue(s.current[index], field.Name)
-	if value == nil {
-		if field.Type == schema.MultiEnum {
-			return []string{}
-		}
-		return ""
-	}
-	parsed, err := schema.ParseNode(field, value)
-	if err != nil {
-		return ""
-	}
-	return parsed
+	return parsedValue(s.current[index], field)
 }
 
 func (s *Store) Edit(index int, name string, values []string, present bool) error {
@@ -207,7 +196,7 @@ func (s *Store) Changes() []Change {
 	defer s.mu.RUnlock()
 	var changes []Change
 	for index := range s.current {
-		id := fmt.Sprint(parsedValue(s.current[index], s.idField()))
+		id := fmt.Sprint(parsedValue(s.original[index], s.idField()))
 		for _, field := range s.schema.Fields {
 			from := parsedValue(s.original[index], field)
 			to := parsedValue(s.current[index], field)

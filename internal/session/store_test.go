@@ -45,6 +45,26 @@ entities:
 	}
 }
 
+func TestIdentifierChangeUsesOriginalIdentity(t *testing.T) {
+	doc, err := schema.Parse([]byte(`
+schema:
+  id_field: key
+  fields: [{name: key, type: text}]
+entities: [{key: PROJ-101}]
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := New(doc)
+	if err := store.Edit(0, "key", []string{"PROJ-102"}, true); err != nil {
+		t.Fatal(err)
+	}
+	changes := store.Changes()
+	if len(changes) != 1 || changes[0].EntityID != "PROJ-101" || changes[0].To != "PROJ-102" {
+		t.Fatalf("a rename must identify the existing record: %#v", changes)
+	}
+}
+
 func TestInvalidEditSetsError(t *testing.T) {
 	doc, err := schema.Parse([]byte(`
 schema:

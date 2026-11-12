@@ -3,7 +3,62 @@ package schema
 import (
 	"strings"
 	"testing"
+
+	"go.yaml.in/yaml/v3"
 )
+
+func TestValueValidationEdges(t *testing.T) {
+	for _, tc := range []struct {
+		field Field
+		value string
+		valid bool
+	}{
+		{Field{Type: Text, Required: true}, "", false},
+		{Field{Type: LongText, Required: true}, "", false},
+		{Field{Type: Text}, "", true},
+		{Field{Type: Enum, Options: []string{"open"}}, "", true},
+		{Field{Type: Enum, Required: true, Options: []string{"open"}}, "", false},
+		{Field{Type: Number}, "NaN", false},
+		{Field{Type: Number}, "+Inf", false},
+		{Field{Type: Number}, "-Inf", false},
+		{Field{Type: Number}, "0.0000001", true},
+		{Field{Type: Bool}, "garbage", false},
+		{Field{Type: Bool}, "true", true},
+		{Field{Type: Bool}, "false", true},
+		{Field{Type: Bool}, "on", true},
+	} {
+		_, err := ParseFormValue(tc.field, []string{tc.value}, true)
+		if (err == nil) != tc.valid {
+			t.Errorf("%s %q: valid=%v, error=%v", tc.field.Type, tc.value, tc.valid, err)
+		}
+	}
+}
+
+func TestNodeRejectsCollectionsAsScalars(t *testing.T) {
+	for _, kind := range []FieldType{Text, LongText, Number, Enum, Date, Time, DateTime} {
+		for _, value := range []string{"{}", "[]"} {
+			if _, err := ParseNode(Field{Type: kind}, mustNode(t, value)); err == nil {
+				t.Errorf("%s accepted %s", kind, value)
+			}
+		}
+	}
+	if _, err := ParseNode(Field{Type: MultiEnum, Options: []string{""}}, mustNode(t, "[{}]")); err == nil {
+		t.Fatal("multienum accepted a mapping as an option")
+	}
+	entity := mustNode(t, "{source: &value hello, copy: *value}")
+	if got, err := ParseNode(Field{Type: Text}, MapValue(entity, "copy")); err != nil || got != "hello" {
+		t.Fatalf("scalar alias: %v, %v", got, err)
+	}
+}
+
+func TestClonePreservesAliasGraph(t *testing.T) {
+	entity := mustNode(t, "&record {key: PROJ-101, nested: [*record]}")
+	copy := Clone(entity)
+	alias := MapValue(copy, "nested").Content[0]
+	if copy == entity || alias.Kind != yaml.AliasNode || alias.Alias != copy {
+		t.Fatal("clone must preserve recursive aliases without keeping the original nodes")
+	}
+}
 
 func TestParseAndValidateValues(t *testing.T) {
 	input := []byte(`

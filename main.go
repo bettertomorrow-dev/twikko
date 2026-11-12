@@ -77,27 +77,25 @@ func run(ctx context.Context, args []string, stdout io.Writer) int {
 		}
 	}
 
-	status := "cancelled"
-	exitCode := 2
+	var event server.Event
 	select {
-	case event := <-editor.Done():
-		status = event.Status
-		if event.Err != nil {
-			fmt.Fprintln(stdout, "multieditor: error="+event.Err.Error())
-			exitCode = 1
-		} else if status == "saved" {
-			exitCode = 0
-		}
+	case event = <-editor.Done():
 	case <-ctx.Done():
 		if err := editor.Cancel(); err != nil {
-			fmt.Fprintln(stdout, "multieditor: error="+err.Error())
-			exitCode = 1
+			event = server.Event{Status: "cancelled", Err: err}
+		} else {
+			event = <-editor.Done()
 		}
 	case err := <-serveErrors:
-		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			fmt.Fprintln(stdout, "multieditor: error=serve: "+err.Error())
-			exitCode = 1
-		}
+		event = server.Event{Status: "cancelled", Err: err}
+	}
+	status := event.Status
+	exitCode := 2
+	if event.Err != nil && !errors.Is(event.Err, http.ErrServerClosed) {
+		fmt.Fprintln(stdout, "multieditor: error="+event.Err.Error())
+		exitCode = 1
+	} else if status == "saved" {
+		exitCode = 0
 	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
