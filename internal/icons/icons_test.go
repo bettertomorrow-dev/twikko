@@ -16,6 +16,7 @@ func makefileIcons(t *testing.T) []string {
 	var names []string
 	collecting := false
 	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSuffix(line, "\r")
 		if strings.HasPrefix(line, "TABLER_ICONS :=") {
 			collecting = true
 			line = strings.TrimPrefix(line, "TABLER_ICONS :=")
