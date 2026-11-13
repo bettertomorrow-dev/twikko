@@ -125,6 +125,22 @@ present with null. `to` is always present. A saved result always contains
 
 ## Examples and agent skills
 
+### Table editor
+
+Run `make run-table` to open the task records directly in a table, or use:
+
+```sh
+bin/twikko --view examples/tasks.view.yaml --data examples/tasks.csv \
+  --mode table --output /tmp/twikko-table-out.yaml --open
+```
+
+The example includes a read-only ID, a required title, status options, numbers,
+dates, multiple labels, and nullable approval values. Edit cells, resize columns
+by dragging their heading edges, and select Save to write the complete records
+and field changes to `/tmp/twikko-table-out.yaml`.
+
+### Other examples
+
 - `examples/tasks.view.yaml` works with `tasks.yaml`, `tasks.json`, and
   `tasks.csv`. They contain the same invented records.
 - `examples/jira.yaml` and `examples/manual-test.yaml` exercise the legacy
@@ -149,6 +165,7 @@ templates and static assets are embedded in the binary.
 | `make test` | Run Go tests. |
 | `make build` | Build `bin/twikko`. |
 | `make run` | Open the CSV example and write `/tmp/twikko-out.yaml`. |
+| `make run-table` | Open the CSV example in a table and write `/tmp/twikko-table-out.yaml`. |
 
 The first-version support target is 200 records × 20 fields, up to 2 MiB and
 20 multienum options. It is measurable, not a truncation limit. Opening and
