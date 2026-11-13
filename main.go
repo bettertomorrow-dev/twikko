@@ -21,6 +21,8 @@ import (
 	"twikko/internal/session"
 )
 
+var version = "dev"
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -33,10 +35,15 @@ func run(ctx context.Context, args []string, stdout io.Writer) int {
 	input := flags.String("input", "", "input YAML file")
 	output := flags.String("output", "", "output YAML file")
 	port := flags.Int("port", 0, "localhost port")
+	showVersion := flags.Bool("version", false, "print version and exit")
 	open := flags.Bool("open", false, "open the editor in a browser")
 	if err := flags.Parse(args); err != nil {
 		fmt.Fprintln(stdout, "twikko: error="+err.Error())
 		return 1
+	}
+	if *showVersion {
+		fmt.Fprintln(stdout, "twikko "+version)
+		return 0
 	}
 	if *input == "" || *output == "" || *port < 0 || *port > 65535 {
 		fmt.Fprintln(stdout, "twikko: error=--input and --output are required; --port must be valid")
@@ -106,6 +113,9 @@ func run(ctx context.Context, args []string, stdout io.Writer) int {
 }
 
 func openBrowser(url string) error {
+	if runtime.GOOS == "windows" {
+		return exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
+	}
 	command := "xdg-open"
 	if runtime.GOOS == "darwin" {
 		command = "open"

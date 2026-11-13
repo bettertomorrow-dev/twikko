@@ -1,0 +1,46 @@
+version: 2
+project_name: twikko
+
+builds:
+  - main: .
+    binary: twikko
+    env: [CGO_ENABLED=0]
+    flags: [-trimpath]
+    ldflags: ['-s -w -X main.version={{ .Version }}']
+    goos: [darwin, linux, windows]
+    goarch: [amd64, arm64]
+
+archives:
+  - formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+    files: [LICENSE, README.md]
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: github-native
+
+release:
+  mode: keep-existing
+  replace_existing_artifacts: true
+
+homebrew_casks:
+  - name: twikko
+    binaries: [twikko]
+    repository:
+      owner: bettertomorrow-dev
+      name: homebrew-tap
+      token: '{{ .Env.TAP_GITHUB_TOKEN }}'
+    directory: Casks
+    homepage: https://github.com/bettertomorrow-dev/twikko
+    description: Edit structured records in a temporary local browser UI
+    license: MIT
+    skip_upload: '{{ if .Env.TAP_GITHUB_TOKEN }}false{{ else }}true{{ end }}'
+    hooks:
+      post:
+        install_steps: |
+          run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/twikko"]

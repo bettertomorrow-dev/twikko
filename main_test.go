@@ -96,3 +96,13 @@ entities: [{key: A-1, summary: before}]
 		t.Fatalf("unexpected output: %s", data)
 	}
 }
+
+func TestRunVersion(t *testing.T) {
+	var stdout bytes.Buffer
+	if code := run(context.Background(), []string{"--version"}, &stdout); code != 0 {
+		t.Fatalf("version exit code %d: %s", code, &stdout)
+	}
+	if stdout.String() != "twikko "+version+"\n" {
+		t.Fatalf("unexpected version: %q", stdout.String())
+	}
+}
