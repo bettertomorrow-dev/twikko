@@ -19,12 +19,40 @@ writes one YAML file and exits.
 4. Twikko writes the output file, prints the final status, and exits.
 5. The agent reads the output and applies the `changes` to the source system.
 
+## Install
+
+Prebuilt releases support macOS, Linux, and Windows on amd64 and arm64.
+These commands become available after the first versioned release.
+
+macOS through Homebrew, once the tap token is configured:
+
+```sh
+brew install --cask bettertomorrow-dev/tap/twikko
+```
+
+macOS or Linux:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/bettertomorrow-dev/twikko/main/install.sh | bash
+```
+
+Windows PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/bettertomorrow-dev/twikko/main/install.ps1 | iex
+```
+
+The scripts verify release SHA-256 checksums before installation. You can also
+inspect the scripts first or download archives from
+[GitHub Releases](https://github.com/bettertomorrow-dev/twikko/releases).
+See [CI and releases](docs/releases.md) for publishing and installer options.
+
 ## Quick start
 
 You need Go 1.25 or newer.
 
 ```sh
-git clone git@github.com:bettertomorrow-dev/twikko.git
+git clone https://github.com/bettertomorrow-dev/twikko.git
 cd twikko
 go build -o bin/twikko .
 
@@ -50,6 +78,7 @@ twikko --input in.yaml --output out.yaml [--port 0] [--open]
 
 | Flag       | Meaning                                                              |
 | ---------- | -------------------------------------------------------------------- |
+| `--version` | Print the build version and exit. |
 | `--input`  | Required. YAML file with the schema and entities.                    |
 | `--output` | Required. YAML file written on Save or Cancel.                       |
 | `--port`   | Port on `127.0.0.1`. The default `0` picks a free port.              |
