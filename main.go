@@ -32,7 +32,10 @@ func main() {
 func run(ctx context.Context, args []string, stdout io.Writer) int {
 	flags := flag.NewFlagSet("twikko", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	input := flags.String("input", "", "input YAML file")
+	input := flags.String("input", "", "legacy input YAML file")
+	view := flags.String("view", "", "view YAML file")
+	data := flags.String("data", "", "YAML, JSON or CSV data file")
+	mode := flags.String("mode", "", "cards or table; overrides view.mode")
 	output := flags.String("output", "", "output YAML file")
 	port := flags.Int("port", 0, "localhost port")
 	showVersion := flags.Bool("version", false, "print version and exit")
@@ -45,14 +48,38 @@ func run(ctx context.Context, args []string, stdout io.Writer) int {
 		fmt.Fprintln(stdout, "twikko "+version)
 		return 0
 	}
-	if *input == "" || *output == "" || *port < 0 || *port > 65535 {
-		fmt.Fprintln(stdout, "twikko: error=--input and --output are required; --port must be valid")
+	if *mode != "" && *mode != "cards" && *mode != "table" {
+		fmt.Fprintln(stdout, "twikko: error=--mode must be cards or table")
 		return 1
 	}
-	document, err := schema.Load(*input)
+	legacy := *input != ""
+	if *output == "" || *port < 0 || *port > 65535 || flags.NArg() != 0 || (legacy && (*view != "" || *data != "")) || (!legacy && (*view == "" || *data == "")) {
+		fmt.Fprintln(stdout, "twikko: error=use --view and --data, or --input; --output is required; --port must be valid")
+		return 1
+	}
+	inputs := []string{*view, *data}
+	if legacy {
+		inputs = []string{*input}
+	}
+	for _, path := range inputs {
+		if err := protectInput(path, *output); err != nil {
+			fmt.Fprintln(stdout, "twikko: error="+err.Error())
+			return 1
+		}
+	}
+	var document *schema.Document
+	var err error
+	if legacy {
+		document, err = schema.Load(*input)
+	} else {
+		document, err = schema.LoadViewWithMode(*view, *data, *mode)
+	}
 	if err != nil {
 		fmt.Fprintln(stdout, "twikko: error="+err.Error())
 		return 1
+	}
+	if legacy && *mode != "" {
+		document.View = &schema.View{Mode: *mode}
 	}
 	absoluteOutput, err := filepath.Abs(*output)
 	if err != nil {
@@ -121,4 +148,36 @@ func openBrowser(url string) error {
 		command = "open"
 	}
 	return exec.Command(command, url).Start()
+}
+
+// protectInput checks lexical paths, symlinks and existing hard links before
+// starting a session. Output is always a separate file.
+func protectInput(input, output string) error {
+	in, err := filepath.Abs(input)
+	if err != nil {
+		return err
+	}
+	out, err := filepath.Abs(output)
+	if err != nil {
+		return err
+	}
+	if resolved, e := filepath.EvalSymlinks(in); e == nil {
+		in = resolved
+	}
+	if resolved, e := filepath.EvalSymlinks(out); e == nil {
+		out = resolved
+	} else {
+		if dir, e := filepath.EvalSymlinks(filepath.Dir(out)); e == nil {
+			out = filepath.Join(dir, filepath.Base(out))
+		}
+	}
+	if in == out {
+		return fmt.Errorf("output must not overwrite input %q", input)
+	}
+	a, ae := os.Stat(in)
+	b, be := os.Stat(out)
+	if ae == nil && be == nil && os.SameFile(a, b) {
+		return fmt.Errorf("output aliases input %q", input)
+	}
+	return nil
 }

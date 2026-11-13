@@ -70,7 +70,8 @@ type Widget struct {
 	Source string     `yaml:"source"`
 	// Label replaces a control's field label, captions a display widget in the
 	// body, and prefixes one in the header. A toggle shows it to its right.
-	Label string `yaml:"label,omitempty"`
+	Label     string `yaml:"label,omitempty"`
+	ShowLabel *bool  `yaml:"show_label,omitempty"`
 	// Options are the choices of a select that overrides a text field.
 	Options  []string           `yaml:"options,omitempty"`
 	Variants map[string]Variant `yaml:"variants,omitempty"`
@@ -253,7 +254,7 @@ func validateDisplay(where string, w *Widget) error {
 // "soure" cannot silently do nothing. An omitted type means `control`.
 func decodeWidget(item *yaml.Node, where string) (Widget, error) {
 	var w Widget
-	if err := checkKeys(item, where, "type", "source", "label", "options", "variants", "style", "intent"); err != nil {
+	if err := checkKeys(item, where, "type", "source", "label", "show_label", "options", "variants", "style", "intent"); err != nil {
 		return w, err
 	}
 	if err := checkWidgetKeys(item, where); err != nil {

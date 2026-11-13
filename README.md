@@ -1,337 +1,190 @@
 # Twikko
 
-Twikko is a small CLI that opens a temporary local web page for editing a
-group of structured records, such as Jira issues or database rows. It is built
-for a hand-off between an AI agent and a person: the agent writes the records
-to YAML, the person reviews and edits them as cards in a browser, and the agent
-reads back a YAML result and applies it to the source system.
-
-Twikko never talks to Jira, a database, or any other service. It reads one
-YAML file, serves a page on `127.0.0.1` until the person saves or cancels, then
-writes one YAML file and exits.
-
-## How it works
-
-1. The agent writes an input YAML file with a schema and the entities.
-2. The agent starts `twikko` in the background and gives the user the URL
-   it prints.
-3. The user edits the cards in the browser and selects **Save** or **Cancel**.
-4. Twikko writes the output file, prints the final status, and exits.
-5. The agent reads the output and applies the `changes` to the source system.
-
-## Install
-
-Prebuilt releases support macOS, Linux, and Windows on amd64 and arm64.
-These commands become available after the first versioned release.
-
-macOS through Homebrew, once the tap token is configured:
-
-```sh
-brew install --cask bettertomorrow-dev/tap/twikko
-```
-
-macOS or Linux:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/bettertomorrow-dev/twikko/main/install.sh | bash
-```
-
-Windows PowerShell:
-
-```powershell
-irm https://raw.githubusercontent.com/bettertomorrow-dev/twikko/main/install.ps1 | iex
-```
-
-The scripts verify release SHA-256 checksums before installation. You can also
-inspect the scripts first or download archives from
-[GitHub Releases](https://github.com/bettertomorrow-dev/twikko/releases).
-See [CI and releases](docs/releases.md) for publishing and installer options.
+Twikko opens a temporary local editor for structured records. Give it a YAML
+view definition and a separate YAML, JSON, or CSV data file. The user edits the
+records in cards or a table, then saves or cancels. Twikko writes a YAML result;
+it does not connect to the source system.
 
 ## Quick start
 
-You need Go 1.25 or newer.
-
 ```sh
-git clone https://github.com/bettertomorrow-dev/twikko.git
-cd twikko
 go build -o bin/twikko .
-
-bin/twikko --input examples/jira.yaml --output /tmp/out.yaml --open
+bin/twikko --view examples/tasks.view.yaml --data examples/tasks.csv \
+  --output /tmp/tasks-result.yaml --open
 ```
 
-The command prints the editor URL and keeps running until you save or cancel:
+The command prints a localhost URL and stays open until the user saves or
+cancels. Equivalent example data is in `examples/tasks.yaml` and
+`examples/tasks.json`.
 
-```text
-twikko: url=http://127.0.0.1:54321/s/<token>/
-twikko: status=saved output=/tmp/out.yaml
-```
-
-The generated templ code and the compiled CSS are committed, so a plain
-`go build` works without any other tool. See [Development](#development) for
-changing the UI.
+The legacy `--input` mode remains available for existing single-file YAML
+inputs, including their built-in header/body templates. Do not combine it with
+`--view` or `--data`.
 
 ## Command line
 
 ```text
-twikko --input in.yaml --output out.yaml [--port 0] [--open]
+twikko --view view.yaml --data records.csv --output result.yaml [--port 0] [--open]
+twikko --input legacy.yaml --output result.yaml [--port 0] [--open]
 ```
 
-| Flag       | Meaning                                                              |
-| ---------- | -------------------------------------------------------------------- |
-| `--version` | Print the build version and exit. |
-| `--input`  | Required. YAML file with the schema and entities.                    |
-| `--output` | Required. YAML file written on Save or Cancel.                       |
-| `--port`   | Port on `127.0.0.1`. The default `0` picks a free port.              |
-| `--open`   | Open the URL in the default browser.                                 |
+`--view` and `--data` are required together. The data extension selects YAML
+(`.yaml`/`.yml`), JSON (`.json`), or CSV (`.csv`). Output is always YAML.
+`--output` must not alias either input file. The server binds to `127.0.0.1`.
+The existing `--port`, `--open`, and `--version` options remain available.
 
-Twikko writes these lines to standard output:
+Twikko prints `twikko: url=<url>` when ready and
+`twikko: status=<saved|cancelled> output=<path>` when the session ends. Exit
+codes are 0 for save, 2 for cancel (including Ctrl+C), and 1 for errors.
 
-| Line                                       | When                         |
-| ------------------------------------------ | ---------------------------- |
-| `twikko: url=<url>`                   | The editor is ready.         |
-| `twikko: status=<saved\|cancelled> output=<path>` | The session ended. |
-| `twikko: error=<message>`             | Something failed.            |
+The caller should wait up to five minutes. If the process is still running,
+leave it running and ask the user to say `continue` when done. On continuation,
+check the process and result file before applying any changes.
 
-Exit codes: `0` after a save, `2` after a cancel (including Ctrl+C), `1` for an
-input, server, or output error.
+## View files
 
-## Input
+A view file is a complete, versioned YAML document. Its `schema` describes
+field types and validation; `view` describes card and table layouts. It can be
+reused with each supported data format.
 
 ```yaml
-title: Sprint triage                         # optional: page heading and tab title
-description: Open bugs of the current sprint. # optional: text under the heading
+version: 1
+title: Tasks
+description: Invented task records.
 schema:
-  id_field: key          # names the field that identifies each entity
-  header:                # optional: widgets drawn in the card header
-    - { type: tag, source: key }
-    - { type: text, source: summary, style: { bold: true } }
-  body:                  # optional: rows of up to four widgets
-    - - { source: status }               # no type: a control, picked from the field type
-      - { source: labels }
-    - - { type: textarea, source: summary }   # override: show a text field as a textarea
+  id_field: id
   fields:
-    - name: key
-      label: Ticket
-      type: text
-      readonly: true
-    - name: summary
-      type: text
-      required: true
+    - { name: id, label: ID, type: text, readonly: true }
+    - { name: title, label: Title, type: text, required: true }
     - name: status
+      label: Status
       type: enum
-      options: [To Do, In Progress, Done]
-    - name: labels
-      type: multienum
-      options: [backend, ui, bug]
-entities:
-  - key: PROJ-1
-    summary: Fix login
-    status: To Do
-    labels: [bug]
+      options: [Backlog, In Progress, Done]
+view:
+  mode: cards
+  show_labels: true
+  table:
+    columns: [{ source: id }, { source: title }, { source: status }]
+  cards:
+    header: [{ type: tag, source: id }, { source: status }]
+    body:
+      - [{ source: title }]
 ```
+
+The mode defaults to `cards` and is fixed for the session. `--mode table` or
+`--mode cards` overrides `view.mode` at launch. There is no browser view switch.
+Both layouts are optional. A table without
+`columns` uses schema field order; cards without a layout use the standard
+header and body grid. Unknown keys and unsupported versions are errors. The
+legacy format keeps its old `schema.header` and `schema.body` widget syntax,
+including built-in templates; the new view format uses complete files and does
+not accept template references.
 
 Field types are `text`, `longtext`, `number`, `bool`, `enum`, `multienum`,
-`date`, `time` (`14:30`), and `datetime` (`2026-10-20T14:30`, no zone). Any field
-can be `required` or `readonly`. `enum` and `multienum` need
-`options`; other types must not have them. Entity keys that the schema does not
-declare are not shown, but they are kept unchanged in the output.
+`date`, `time`, and `datetime`. Enum types require `options`; other types
+forbid them. Fields may be `required` or `readonly`. YAML and JSON data are
+lists of objects. CSV uses the first row as unique, non-empty field names;
+`import.csv.delimiter` sets its one-character delimiter and defaults to comma.
+Quoted cells may contain delimiters and line breaks. Multi-enum CSV cells hold
+a JSON array of strings. CSV values are interpreted using the schema, while
+undeclared columns remain strings. Unknown fields and nested values are kept.
 
-### Widgets
+### Labels
 
-The card header and the card body are built from the same widgets. A widget has
-a `type`, a `source`, and optionally a `label`, `options`, `variants`, and
-`style`, and a line takes `intent`. It either shows a value, edits a field, or
-draws a line.
+`view.show_labels` controls widget labels and table headings globally.
+`show_label` on a card widget or table column overrides it. An omitted setting
+keeps the normal label behavior for that location. Explicit `false` hides only
+the visible caption; values, errors, and changed markers remain visible, and
+controls retain accessible names. Table headings keep visually hidden text.
+Explicit `true` shows a caption even in a card header. `label` chooses the
+caption text; it does not turn the caption on.
 
-Display widgets show a value, read-only. `source` is an entity key or a dotted
-path to a scalar, and may point at keys the schema does not declare.
+### Values and changes
 
-- `icon`: a vendored Tabler icon. `variants` map a value to an icon and an
-  `intent` (`neutral`, `info`, `success`, `warning`, `danger`). A value with no
-  variant gets a neutral diamond.
-- `tag`: the value in a pill. `variants` map a value to an `intent`.
-- `text`: the value as text, with `style` `bold`, `italic`, and `muted`.
+Untouched missing keys, `null`, empty strings, and empty arrays stay distinct.
+Clearing text writes `""`; clearing number, date, time, datetime, enum, or bool
+writes `null`; clearing multienum writes `[]`. Blank CSV cells use those same
+type-specific empty values. A nullable bool has true, false, and null states.
+Required rejects missing, null, empty string, and empty array, but accepts
+`false` and `0`. Text whitespace is preserved. A request that omits a field
+does not clear it.
 
-Lines separate widgets. They show no value and take no `source`:
+Numbers are exact decimal values, including exponent notation. JSON numbers are
+read without conversion through binary floating point. Unsupported number
+syntax or values beyond the documented parser bounds produce errors instead
+of rounding. Numerically equal edits retain the original value.
 
-- `vline`: a vertical 1px line. In a body row it takes only its own width, and
-  its height is the height of the row. In the header it is as tall as the
-  header's line. It must sit between two widgets.
-- `hline`: a horizontal 1px line. It is a row of its own in the body, with no
-  other widget beside it, and it is not allowed in the header.
+`schema.id_field`, when present, must name a text or number field whose values
+are non-empty and unique. IDs are immutable and checked on the server. A change
+entry uses `entity_id` as the string form of that original ID. Without an ID
+field, it uses zero-based `record_index` instead and omits `entity_id`.
+Missing `from` means the original field was absent; `from: null` means it was
+present with null. `to` is always present. A saved result always contains
+`entities` and `changes`, including empty lists. A cancelled result has
+`status: cancelled` and is not applied.
 
-A line takes an optional `intent` (`neutral` by default, `info`, `success`,
-`warning`, `danger`) that sets its colour.
+## Examples and agent skills
 
-Controls edit a field. `source` is the name of a field declared in
-`schema.fields`. `type: control` picks the control from the field's type. Leaving
-`type` out means `control`. Naming a control type instead overrides the pick:
+### Table editor
 
-| Field type | `control` draws | Other types it accepts |
-| --- | --- | --- |
-| `text` | `input` | `textarea`, `select` (needs `options`) |
-| `longtext` | `textarea` | `input` |
-| `number` | `number` | |
-| `bool` | `toggle` | |
-| `enum` | `select` | |
-| `multienum` | `multiselect` (checkboxes) | |
-| `date`, `time`, `datetime` | `date`, `time`, `datetime` | |
-
-An override only changes how the same kind of value is drawn. `select` over a
-`text` field takes `options` on the widget, and then the field accepts only
-those values, including in a request sent straight to the server.
-
-`label` replaces the field label above a control. A `toggle` shows it to the
-right of the switch, and it is optional. In the header a control shows no label
-and uses it as a tooltip, except a toggle. A display widget shows `label` as a
-caption in the body and as a muted prefix in the header.
-
-A field has one control in the header and body together. Display widgets can
-repeat a source. Widgets that show values follow edits, and the control being
-typed in is never redrawn.
-
-### Card header
-
-By default a card header shows the entity identifier. `schema.title_field`
-names an entity key to show instead. `schema.header` replaces the title with a
-list of widgets placed side by side between the eye toggle and the menu. A
-display widget without a value is skipped. A control in the header works while
-the card is collapsed. A field the header edits is left out of the default body
-grid.
-
-`header: { template: gojira }` selects a built-in widget list instead of
-writing one. It is the header for tickets pulled by the `gojira` skill. An
-unknown template name or icon name fails the load and lists the valid ones.
-`title_field` and `header` cannot be used together.
-
-### Card body
-
-By default the body shows every field in a two-column grid. `schema.body`
-shapes it as rows of one to four widgets, up to ten rows. A row's widgets share
-its width equally, and every row stacks to one column on a narrow screen. Lines
-do not count in those limits, and a vline does not take an equal share: the
-row's columns are equal, with a one-pixel gap for each vline. A row with vlines
-stays stacked, without them, until `md` (`lg` for four widgets). A
-display widget with no value leaves an empty slot, so columns keep their place
-across cards, and a text widget wraps long values. **A field that no control in
-the header or body places is hidden** once a body is set, but it stays unchanged
-in the output. The load fails when a field has two controls, a control names an
-undeclared field or does not fit it, a limit is broken, or a required editable
-field would be hidden.
-
-`body: { template: gojira }` selects a built-in layout, as for the header.
-
-## Output
-
-```yaml
-status: saved
-saved_at: 2026-10-13T08:15:30Z
-changes:
-  - entity_id: PROJ-1
-    field: status
-    from: To Do
-    to: In Progress
-entities:
-  - key: PROJ-1
-    summary: Fix login
-    status: In Progress
-    labels: [bug]
-```
-
-A cancelled session writes only `status: cancelled`, and the caller must not
-apply anything from it. The file is written atomically.
-
-## What the editor does
-
-- One card per entity. The eye button at the top left collapses and expands it,
-  and a collapsed card still shows how many fields changed and whether any has
-  an error.
-- The ellipsis menu at the top right holds card actions. It has **Reset** today.
-- Changed fields are marked, and Save stays disabled while any field is invalid.
-- The server rejects edits to read-only fields and values that break the schema,
-  even if a client sends them directly.
-- The look follows shadcn/ui's neutral theme, in light or dark to match the
-  operating system.
-
-The full requirements are in [docs/PRD.md](docs/PRD.md).
-
-## Use it from an agent
-
-[`skills/twikko`](skills/twikko/SKILL.md) is an agent skill that
-explains how to write the input, start the tool, wait for the user, and read the
-result. [`skills/gojira`](skills/gojira/SKILL.md) pulls Jira tickets through the
-Atlassian MCP and opens them in Twikko. It runs only when you invoke it by
-name. Both are linked into `.claude/skills`, `.agents/skills`, and
-`.codex/skills`, so Claude Code, Codex, and other agents pick them up inside
-this repository.
-
-To run the latest source from any directory, link the dev wrapper onto your
-`PATH`:
+Run `make run-table` to open the task records directly in a table, or use:
 
 ```sh
-ln -s "$PWD/scripts/twikko-dev" ~/.local/bin/twikko
+bin/twikko --view examples/tasks.view.yaml --data examples/tasks.csv \
+  --mode table --output /tmp/twikko-table-out.yaml --open
 ```
 
-The wrapper regenerates the UI, rebuilds, and then runs the binary with your
-arguments.
+The example includes a read-only ID, a required title, status options, numbers,
+dates, multiple labels, and nullable approval values. Edit cells, resize columns
+by dragging their heading edges, and select Save to write the complete records
+and field changes to `/tmp/twikko-table-out.yaml`.
+
+### Other examples
+
+- `examples/tasks.view.yaml` works with `tasks.yaml`, `tasks.json`, and
+  `tasks.csv`. They contain the same invented records.
+- `examples/jira.yaml` and `examples/manual-test.yaml` exercise the legacy
+  `--input` route.
+- [`skills/twikko`](skills/twikko/SKILL.md) describes preparing inputs,
+  launching Twikko, waiting, and applying saved changes.
+- [`skills/gojira`](skills/gojira/SKILL.md) describes preparing read-only
+  issue data and uses its reusable view at
+  `skills/gojira/assets/gojira.view.yaml`.
 
 ## Development
 
-Stack: Go, [templ](https://templ.guide), HTMX, and Tailwind CSS v4 through the
-standalone CLI, so no Node runtime is needed. Templates and static files are
-embedded into the binary with `go:embed`.
+Go, templ, HTMX, and Tailwind CSS v4 through its standalone CLI. Generated
+templates and static assets are embedded in the binary.
 
-| Command         | What it does                                                        |
-| --------------- | ------------------------------------------------------------------- |
-| `make tools`    | Download the standalone Tailwind executable into `bin/`.            |
-| `make vendor`   | Download the pinned HTMX build and the Tabler icons.                |
-| `make generate` | Run templ and compile the CSS.                                      |
-| `make fmt`      | Format Go and templ files.                                          |
-| `make test`     | Run the Go tests.                                                   |
-| `make build`    | Build `bin/twikko`.                                            |
-| `make run`      | Start the example editor, writing to `/tmp/twikko-out.yaml`.   |
+| Command | Purpose |
+| --- | --- |
+| `make tools` | Download the standalone Tailwind executable. |
+| `make vendor` | Download HTMX and Tabler icons. |
+| `make generate` | Generate templ code and compile CSS. |
+| `make fmt` | Format Go and templ files. |
+| `make test` | Run Go tests. |
+| `make build` | Build `bin/twikko`. |
+| `make run` | Open the CSV example and write `/tmp/twikko-out.yaml`. |
+| `make run-table` | Open the CSV example in a table and write `/tmp/twikko-table-out.yaml`. |
 
-After you change a `.templ` file or `internal/ui/input.css`, run
-`make generate` and commit the regenerated files.
+The first-version support target is 200 records × 20 fields, up to 2 MiB and
+20 multienum options. It is measurable, not a truncation limit. Opening and
+opening either view (2 s), server p95 response (300 ms), and Save (2 s) are
+measurement goals. These timings have not yet been measured.
 
-Layout:
+See [docs/PRD.md](docs/PRD.md) for product requirements.
 
-```text
-main.go              CLI entry point and process lifecycle
-internal/schema      Input parsing and validation, header widgets, body layout, templates
-internal/icons       Vendored Tabler icons, the list of valid icon names
-internal/session     In-memory edit state and change tracking
-internal/output      Atomic YAML output writer
-internal/server      HTTP and HTMX handlers, token check, asset allowlist
-internal/ui          templ components, Tailwind input, embedded static files
-skills/twikko        Agent skill for running the tool
-skills/gojira        Agent skill that pulls Jira tickets into Twikko
-examples/            Sample input files
-docs/PRD.md          Product requirements
-AGENTS.md            Instructions for coding agents working on this repo
-```
 
-### Theme and icons
+The optional browser regression check in `scripts/test-data-views.cjs` needs
+an externally installed Playwright package and its Chromium browser. After
+`make build`, run `NODE_PATH=/path/to/node_modules node scripts/test-data-views.cjs`.
+This checks both launch modes, immediate Save with queued edits, invalid drafts,
+focus, Reset, nullable values, labels, read-only controls, table grid lines,
+borderless cell editors, and pointer/keyboard column resizing.
 
-The colour tokens in `internal/ui/input.css` come from shadcn/ui's neutral
-theme. Components use semantic classes such as `bg-background` and
-`text-muted-foreground`, never fixed palette colours.
 
-Icons are [Tabler Icons](https://tabler.io/icons), vendored as `.svg` files in
-`internal/icons/svg/` and drawn as CSS masks by the `Icon` component. To add
-one, put its name in `TABLER_ICONS` in the `Makefile`, run `make vendor`, and
-use `@Icon(data, "<name>")` in a template or the name in a header widget.
-
-## Scope
-
-This is a proof of concept. It edits existing entities only, with no create or
-delete, no authentication or multi-user editing, no JSON or CSV input, and no
-validation beyond required values, types, and enum options. State lives in
-memory and ends with the process.
-
-## License
-
-Twikko is released under the MIT License; see [LICENSE](LICENSE). The
-vendored Tabler icons are also MIT licensed; see
-`internal/icons/svg/LICENSE`. HTMX is vendored as
-`internal/ui/static/htmx.min.js`.
+In table mode, drag the right edge of a column heading to resize that column.
+A focused resize handle also accepts Left/Right, Shift for larger steps, and
+Home for the minimum width. Widths stay in the current page and survive row
+Reset; reloading restores the defaults. Table cells provide the grid borders,
+so their editors have no separate borders or repeated visible captions.

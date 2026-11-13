@@ -1,0 +1,44 @@
+version: 1
+title: Example tasks
+description: Invented task records for trying the card and table views.
+
+schema:
+  id_field: id
+  fields:
+    - { name: id, label: ID, type: text, readonly: true }
+    - { name: title, label: Title, type: text, required: true }
+    - name: status
+      label: Status
+      type: enum
+      options: [Backlog, In Progress, Done]
+    - { name: estimate, label: Estimate, type: number }
+    - { name: due, label: Due date, type: date }
+    - name: labels
+      label: Labels
+      type: multienum
+      options: [docs, ui, testing]
+    - { name: approved, label: Approved, type: bool }
+
+import:
+  csv:
+    delimiter: ','
+
+view:
+  mode: cards
+  show_labels: true
+  table:
+    columns:
+      - { source: id }
+      - { source: title }
+      - { source: status }
+      - { source: estimate }
+      - { source: due }
+      - { source: labels }
+      - { source: approved }
+  cards:
+    header:
+      - { type: tag, source: id, show_label: false }
+      - { type: text, source: title, style: { bold: true } }
+    body:
+      - [{ source: status }, { source: estimate }]
+      - [{ source: due }, { source: labels }, { source: approved }]

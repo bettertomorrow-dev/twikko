@@ -3,8 +3,6 @@ package session
 import (
 	"errors"
 	"fmt"
-	"reflect"
-	"strconv"
 	"sync"
 
 	"go.yaml.in/yaml/v3"
@@ -12,10 +10,14 @@ import (
 )
 
 type Change struct {
-	EntityID string
-	Field    string
-	From     any
-	To       any
+	EntityID    string
+	RecordIndex *int
+	FromPresent bool
+	FromNode    *yaml.Node
+	ToNode      *yaml.Node
+	Field       string
+	From        any
+	To          any
 }
 
 type Store struct {
@@ -23,6 +25,9 @@ type Store struct {
 	title     string
 	desc      string
 	schema    schema.Schema
+	view      *schema.View
+	mode      string
+	drafts    map[int]map[string][]string
 	original  []*yaml.Node
 	current   []*yaml.Node
 	errors    map[int]map[string]string
@@ -32,13 +37,23 @@ type Store struct {
 func New(doc *schema.Document) *Store {
 	original := cloneEntities(doc.Entities)
 	store := &Store{
-		title:     doc.Title,
-		desc:      doc.Description,
-		schema:    doc.Schema,
+		title:  doc.Title,
+		desc:   doc.Description,
+		schema: doc.Schema,
+		view:   doc.View, mode: "cards", drafts: make(map[int]map[string][]string),
 		original:  original,
 		current:   cloneEntities(doc.Entities),
 		errors:    make(map[int]map[string]string),
 		collapsed: make(map[int]bool),
+	}
+	store.schema.Fields = append([]schema.Field(nil), doc.Schema.Fields...)
+	for i := range store.schema.Fields {
+		if store.schema.Fields[i].Name == store.schema.IDField {
+			store.schema.Fields[i].Readonly = true
+		}
+	}
+	if doc.View != nil {
+		store.mode = doc.View.Mode
 	}
 	store.validateAll()
 	return store
@@ -74,6 +89,15 @@ func (s *Store) FieldValue(index int, field schema.Field) any {
 	if index < 0 || index >= len(s.current) {
 		return ""
 	}
+	if raw, ok := s.drafts[index][field.Name]; ok {
+		if field.Type == schema.MultiEnum {
+			return append([]string{}, raw...)
+		}
+		if len(raw) > 0 {
+			return raw[0]
+		}
+		return ""
+	}
 	return parsedValue(s.current[index], field)
 }
 
@@ -84,18 +108,30 @@ func (s *Store) Edit(index int, name string, values []string, present bool) erro
 	if !ok {
 		return fmt.Errorf("unknown field %q", name)
 	}
-	if field.Readonly {
+	if field.Readonly || (s.schema.IDField != "" && name == s.schema.IDField) {
 		return fmt.Errorf("field %q is read-only", name)
 	}
 	if index < 0 || index >= len(s.current) {
 		return errors.New("entity not found")
 	}
+	if !present {
+		return nil
+	}
+	if s.drafts[index] == nil {
+		s.drafts[index] = make(map[string][]string)
+	}
+	s.drafts[index][name] = append([]string{}, values...)
 	value, err := schema.ParseFormValue(field, values, present)
 	if err != nil {
 		s.setError(index, name, err.Error())
 		return nil
 	}
-	schema.SetMapValue(s.current[index], name, valueNode(field, value))
+	candidate := valueNode(field, value)
+	existing := schema.MapValue(s.current[index], name)
+	if !equalValue(field, existing, candidate) {
+		schema.SetMapValue(s.current[index], name, candidate)
+	}
+	delete(s.drafts[index], name)
 	s.clearError(index, name)
 	return nil
 }
@@ -108,6 +144,7 @@ func (s *Store) Reset(index int) error {
 	}
 	s.current[index] = schema.Clone(s.original[index])
 	delete(s.errors, index)
+	delete(s.drafts, index)
 	s.validateEntity(index)
 	return nil
 }
@@ -174,7 +211,7 @@ func (s *Store) IsChanged(index int, name string) bool {
 	if !ok {
 		return false
 	}
-	return !reflect.DeepEqual(parsedValue(s.original[index], field), parsedValue(s.current[index], field))
+	return !equalValue(field, schema.MapValue(s.original[index], field.Name), schema.MapValue(s.current[index], field.Name))
 }
 
 func (s *Store) ChangedCount() int {
@@ -183,7 +220,7 @@ func (s *Store) ChangedCount() int {
 	count := 0
 	for index := range s.current {
 		for _, field := range s.schema.Fields {
-			if !reflect.DeepEqual(parsedValue(s.original[index], field), parsedValue(s.current[index], field)) {
+			if !equalValue(field, schema.MapValue(s.original[index], field.Name), schema.MapValue(s.current[index], field.Name)) {
 				count++
 			}
 		}
@@ -196,12 +233,23 @@ func (s *Store) Changes() []Change {
 	defer s.mu.RUnlock()
 	var changes []Change
 	for index := range s.current {
-		id := fmt.Sprint(parsedValue(s.original[index], s.idField()))
+		id := ""
+		var recordIndex *int
+		if s.schema.IDField != "" {
+			n := schema.MapValue(s.original[index], s.schema.IDField)
+			for n.Kind == yaml.AliasNode {
+				n = n.Alias
+			}
+			id = n.Value
+		} else {
+			n := index
+			recordIndex = &n
+		}
 		for _, field := range s.schema.Fields {
 			from := parsedValue(s.original[index], field)
 			to := parsedValue(s.current[index], field)
-			if !reflect.DeepEqual(from, to) {
-				changes = append(changes, Change{EntityID: id, Field: field.Name, From: from, To: to})
+			if !equalValue(field, schema.MapValue(s.original[index], field.Name), schema.MapValue(s.current[index], field.Name)) {
+				changes = append(changes, Change{EntityID: id, RecordIndex: recordIndex, FromPresent: schema.MapValue(s.original[index], field.Name) != nil, FromNode: schema.Clone(schema.MapValue(s.original[index], field.Name)), ToNode: schema.Clone(schema.MapValue(s.current[index], field.Name)), Field: field.Name, From: from, To: to})
 			}
 		}
 	}
@@ -246,11 +294,6 @@ func (s *Store) field(name string) (schema.Field, bool) {
 	return schema.Field{}, false
 }
 
-func (s *Store) idField() schema.Field {
-	field, _ := s.field(s.schema.IDField)
-	return field
-}
-
 func (s *Store) setError(index int, name, message string) {
 	if s.errors[index] == nil {
 		s.errors[index] = make(map[string]string)
@@ -278,37 +321,65 @@ func parsedValue(entity *yaml.Node, field schema.Field) any {
 	}
 	value, err := schema.ParseNode(field, node)
 	if err != nil {
-		return ""
+		if node.Kind == yaml.ScalarNode {
+			return node.Value
+		}
+		b, _ := yaml.Marshal(node)
+		return string(b)
 	}
 	return value
 }
 
 func valueNode(field schema.Field, value any) *yaml.Node {
-	switch field.Type {
-	case schema.MultiEnum:
-		values := value.([]string)
-		node := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
-		for _, item := range values {
-			node.Content = append(node.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: item})
-		}
-		return node
-	case schema.Bool:
-		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: strconv.FormatBool(value.(bool))}
-	case schema.Number:
-		if value == "" {
-			return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: ""}
-		}
-		n := value.(float64)
-		tag := "!!float"
-		text := strconv.FormatFloat(n, 'f', -1, 64)
-		if n == float64(int64(n)) {
-			tag = "!!int"
-		}
-		return &yaml.Node{Kind: yaml.ScalarNode, Tag: tag, Value: text}
-	default:
-		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: value.(string)}
+	if value == nil {
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!null", Value: "null"}
 	}
+	if d, ok := value.(schema.Decimal); ok {
+		return d.Node()
+	}
+	n := &yaml.Node{}
+	_ = n.Encode(value)
+	return n
 }
+
+func equalValue(field schema.Field, a, b *yaml.Node) bool {
+	return equalNodes(field, a, b, make(map[[2]*yaml.Node]bool))
+}
+func equalNodes(field schema.Field, a, b *yaml.Node, seen map[[2]*yaml.Node]bool) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	for a.Kind == yaml.AliasNode {
+		a = a.Alias
+	}
+	for b.Kind == yaml.AliasNode {
+		b = b.Alias
+	}
+	pair := [2]*yaml.Node{a, b}
+	if seen[pair] {
+		return true
+	}
+	seen[pair] = true
+	if field.Type == schema.Number && a.Tag != "!!null" && b.Tag != "!!null" {
+		x, xe := schema.NodeDecimal(a)
+		y, ye := schema.NodeDecimal(b)
+		if xe == nil && ye == nil {
+			return x.Equal(y)
+		}
+	}
+	if a.Kind != b.Kind || a.Tag != b.Tag || a.Value != b.Value || len(a.Content) != len(b.Content) {
+		return false
+	}
+	for i := range a.Content {
+		if !equalNodes(schema.Field{}, a.Content[i], b.Content[i], seen) {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *Store) View() *schema.View { return s.view }
+func (s *Store) Mode() string       { s.mu.RLock(); defer s.mu.RUnlock(); return s.mode }
 
 func cloneEntities(entities []*yaml.Node) []*yaml.Node {
 	result := make([]*yaml.Node, len(entities))

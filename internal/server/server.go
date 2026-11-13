@@ -17,6 +17,7 @@ import (
 	"github.com/a-h/templ"
 	"twikko/internal/icons"
 	"twikko/internal/output"
+	"twikko/internal/schema"
 	"twikko/internal/session"
 	"twikko/internal/ui"
 )
@@ -145,7 +146,7 @@ func (s *Server) requireWriteHost(w http.ResponseWriter, r *http.Request, next f
 }
 
 func (s *Server) entityAction(w http.ResponseWriter, r *http.Request) {
-	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/s/"+s.token+"/"), "/")
+	parts := strings.Split(strings.TrimPrefix(r.URL.EscapedPath(), "/s/"+s.token+"/"), "/")
 	if len(parts) < 3 || parts[0] != "entities" {
 		http.NotFound(w, r)
 		return
@@ -161,7 +162,11 @@ func (s *Server) entityAction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		data := ui.NewPageData(s.store, s.token)
-		s.render(w, ui.EntityCard(data, data.Entity(index)))
+		if data.Mode == "table" {
+			s.render(w, ui.TableRow(data, data.Entity(index)))
+		} else {
+			s.render(w, ui.EntityCard(data, data.Entity(index)))
+		}
 		s.renderOOBSaveBar(w, data)
 		return
 	}
@@ -191,7 +196,7 @@ func (s *Server) entityAction(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid form", http.StatusBadRequest)
 		return
 	}
-	if err := s.store.Edit(index, name, r.Form["value"], r.Form.Has("value")); err != nil {
+	if err := s.store.Edit(index, name, r.Form["value"], (r.Form.Has("value") || r.Form.Get("present") == "true")); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -202,12 +207,21 @@ func (s *Server) entityAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.render(w, ui.FieldStatus(index, field))
+	if data.Mode == "table" {
+		for _, cell := range data.Entity(index).Cells {
+			if cell.Field != nil && cell.Field.Field.Name == name && (cell.Type == schema.WidgetTextarea || cell.Type == schema.WidgetMultiSelect) {
+				s.render(w, ui.CellSummary(index, field, true))
+			}
+		}
+	}
 	// Out of band: the display widgets that show the edited value, and the badges
 	// of a collapsed card. Controls are left alone, so the one being typed in
 	// keeps its focus.
 	entity := data.Entity(index)
 	s.render(w, ui.DisplaySlots(data, entity))
-	s.render(w, ui.EntityBadges(entity, true))
+	if data.Mode != "table" {
+		s.render(w, ui.EntityBadges(entity, true))
+	}
 	s.renderOOBSaveBar(w, data)
 }
 

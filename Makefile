@@ -11,7 +11,7 @@ TABLER_ICONS := eye eye-off dots \
 	git-pull-request-closed git-merge messages \
 	calendar clock chevron-left chevron-right
 
-.PHONY: tools vendor generate build test fmt run
+.PHONY: tools vendor generate build test fmt run run-table
 
 tools:
 	@mkdir -p bin
@@ -51,4 +51,7 @@ fmt:
 	go tool templ fmt internal/ui
 
 run:
-	go run . --input examples/jira.yaml --output /tmp/twikko-out.yaml --open
+	go run . --view examples/tasks.view.yaml --data examples/tasks.csv --output /tmp/twikko-out.yaml --open
+
+run-table:
+	go run . --view examples/tasks.view.yaml --data examples/tasks.csv --mode table --output /tmp/twikko-table-out.yaml --open

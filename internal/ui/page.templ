@@ -17,19 +17,15 @@ templ Page(data PageData) {
 			<script src={ templ.SafeURL(data.AssetBase + "app.js") } defer></script>
 			<link rel="stylesheet" href={ templ.SafeURL(data.AssetBase + "styles.css") }/>
 		</head>
-		<body>
-			<main class="mx-auto max-w-5xl px-4 py-8 pb-32">
+		<body hx-sync="this:queue all">
+			<main class={ templ.Classes("mx-auto px-4 py-8 pb-32", templ.KV("max-w-5xl", data.Mode != "table")) }>
 				<header class="mb-6">
 					<h1 class="text-2xl font-semibold tracking-tight">{ data.Title }</h1>
 					if data.Description != "" {
 						<p class="mt-1 whitespace-pre-line text-sm text-muted-foreground">{ data.Description }</p>
 					}
 				</header>
-				<div id="entities" class="space-y-5">
-					for _, entity := range data.Entities {
-						@EntityCard(data, entity)
-					}
-				</div>
+				@Entities(data)
 				<footer class="mt-12 text-center text-xs text-muted-foreground/60 select-none">Twikko, 2026</footer>
 			</main>
 			@SaveBar(data, false)
@@ -37,8 +33,66 @@ templ Page(data PageData) {
 	</html>
 }
 
+templ Entities(data PageData) {
+	<div id="entities" data-view-mode={ data.Mode } class="space-y-5">
+		if data.Mode == "table" && len(data.Columns) > 0 {
+			<div class="max-h-[70vh] overflow-auto">
+				<table id="data-table" class="data-table table-fixed border-collapse text-left" style={ templ.SafeCSS(fmt.Sprintf("width:%dpx", len(data.Columns)*200+96)) }>
+					<colgroup>
+						for range data.Columns {
+							<col style="width:200px"/>
+						}
+						<col style="width:96px"/>
+					</colgroup>
+					<thead>
+						<tr>
+							for index, column := range data.Columns {
+								<th scope="col" class="sticky top-0 z-10 border border-border bg-background px-3 py-2 text-sm font-medium">
+									<span class={ templ.Classes("block truncate", templ.KV("sr-only", !column.ShowLabel)) }>{ columnHeading(column) }</span>
+									<button type="button" role="separator" aria-orientation="vertical" aria-label={ "Resize " + columnHeading(column) } aria-controls="data-table" aria-valuemin="96" aria-valuenow="200" data-column-resize={ fmt.Sprint(index) } class="absolute inset-y-0 right-0 w-2 cursor-col-resize touch-none select-none hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"></button>
+								</th>
+							}
+							<th scope="col" class="sticky top-0 z-10 border border-border bg-background px-3 py-2 text-sm font-medium">
+								Actions
+								<button type="button" role="separator" aria-orientation="vertical" aria-label="Resize Actions" aria-controls="data-table" aria-valuemin="96" aria-valuenow="96" data-column-resize={ fmt.Sprint(len(data.Columns)) } class="absolute inset-y-0 right-0 w-2 cursor-col-resize touch-none select-none hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"></button>
+							</th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, entity := range data.Entities {
+							@TableRow(data, entity)
+						}
+					</tbody>
+				</table>
+			</div>
+		} else {
+			for _, entity := range data.Entities {
+				@EntityCard(data, entity)
+			}
+		}
+	</div>
+}
+
+templ TableRow(data PageData, entity EntityView) {
+	<tr id={ fmt.Sprintf("entity-%d", entity.Index) }>
+		for _, widget := range entity.Cells {
+			<td class="border border-border p-0 align-top">
+				if widget.Type == schema.WidgetTextarea || widget.Type == schema.WidgetMultiSelect {
+					<details open?={ widget.Field.Error!="" }>
+						@CellSummary(entity.Index, *widget.Field, false)
+						@Widget(data, entity, widget, false)
+					</details>
+				} else {
+					@Widget(data, entity, widget, false)
+				}
+			</td>
+		}
+		<td class="border border-border p-2 align-top text-sm"><button hx-post={ templ.SafeURL(fmt.Sprintf("/s/%s/entities/%d/reset", data.Token, entity.Index)) } hx-target={ fmt.Sprintf("#entity-%d", entity.Index) } hx-swap="outerHTML settle:0ms">Reset</button></td>
+	</tr>
+}
+
 templ EntityCard(data PageData, entity EntityView) {
-	<section id={ fmt.Sprintf("entity-%d", entity.Index) } class="rounded-lg border bg-card text-card-foreground shadow-xs">
+	<section id={ fmt.Sprintf("entity-%d", entity.Index) } class="rounded-lg border bg-card text-card-foreground shadow-xs [content-visibility:auto] [contain-intrinsic-size:auto_600px]">
 		<header class={ templ.Classes("flex items-center justify-between gap-4 px-5 py-4", templ.KV("border-b", !entity.Collapsed)) }>
 			<div class="flex min-w-0 items-center gap-3">
 				@CollapseToggle(data, entity)
@@ -121,7 +175,7 @@ templ Line(widget WidgetView) {
 templ DisplaySlot(data PageData, widget WidgetView, header bool, oob bool) {
 	<div id={ widget.ID } { oobAttrs(oob)... } class={ displaySlotClass(header) }>
 		if widget.HasValue {
-			if widget.Label != "" {
+			if widget.ShowLabel && widget.Label != "" {
 				if header {
 					<span class="shrink-0 text-xs text-muted-foreground">{ widget.Label }</span>
 				} else {
@@ -147,15 +201,23 @@ templ DisplayWidget(data PageData, widget WidgetView) {
 
 // DisplaySlots renders every display slot of a card out of band, header and body.
 templ DisplaySlots(data PageData, entity EntityView) {
-	for _, widget := range entity.Widgets {
-		if widget.Field == nil && !widget.IsLine() {
-			@DisplaySlot(data, widget, true, true)
-		}
-	}
-	for _, row := range entity.Rows {
-		for _, widget := range row.Widgets {
+	if data.Mode == "table" {
+		for _, widget := range entity.Cells {
 			if widget.Field == nil && !widget.IsLine() {
 				@DisplaySlot(data, widget, false, true)
+			}
+		}
+	} else {
+		for _, widget := range entity.Widgets {
+			if widget.Field == nil && !widget.IsLine() {
+				@DisplaySlot(data, widget, true, true)
+			}
+		}
+		for _, row := range entity.Rows {
+			for _, widget := range row.Widgets {
+				if widget.Field == nil && !widget.IsLine() {
+					@DisplaySlot(data, widget, false, true)
+				}
 			}
 		}
 	}
@@ -173,7 +235,7 @@ templ CollapseToggle(data PageData, entity EntityView) {
 		hx-post={ templ.SafeURL(fmt.Sprintf("/s/%s/entities/%d/collapsed", data.Token, entity.Index)) }
 		hx-vals={ fmt.Sprintf(`{"collapsed": "%t"}`, !entity.Collapsed) }
 		hx-target={ fmt.Sprintf("#entity-%d", entity.Index) }
-		hx-swap="outerHTML"
+		hx-swap="outerHTML settle:0ms"
 	>
 		if entity.Collapsed {
 			@Icon(data, "eye-off")
@@ -199,7 +261,7 @@ templ CardMenu(data PageData, entity EntityView) {
 				class="block w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
 				hx-post={ templ.SafeURL(fmt.Sprintf("/s/%s/entities/%d/reset", data.Token, entity.Index)) }
 				hx-target={ fmt.Sprintf("#entity-%d", entity.Index) }
-				hx-swap="outerHTML"
+				hx-swap="outerHTML settle:0ms"
 			>Reset</button>
 		</div>
 	</details>
@@ -209,10 +271,14 @@ templ CardMenu(data PageData, entity EntityView) {
 // visible label, which is its tooltip and accessible name instead, and shows
 // only errors under it.
 templ Control(data PageData, entity EntityView, widget WidgetView, header bool) {
-	<div class={ controlWrapperClass(header, widget.Field.Changed) }>
-		if !header && widget.Type != schema.WidgetToggle {
-			<label class="mb-1.5 block text-sm font-medium" for={ fieldID(entity.Index, widget.Field.Field.Name) }>
-				{ widget.Field.Field.Label }
+	<div data-field-control class={ controlWrapperClass(header, widget.Field.Changed) }>
+		if (widget.Type != schema.WidgetToggle || (!widget.Field.Field.Required && data.NewFormat)) && (!header || data.NewFormat) {
+			<label class={ templ.Classes("mb-1.5 block text-sm font-medium", templ.KV("sr-only", !widget.ShowLabel)) } for={ fieldID(entity.Index, widget.Field.Field.Name) }>
+				if widget.Type==schema.WidgetToggle && widget.Label!="" {
+					{ widget.Label }
+				} else {
+					{ widget.Field.Field.Label }
+				}
 				if widget.Field.Field.Required {
 					<span class="text-destructive">*</span>
 				}
@@ -225,7 +291,7 @@ templ Control(data PageData, entity EntityView, widget WidgetView, header bool) 
 					name="value"
 					class={ textareaClass(header) }
 					disabled?={ widget.Field.Field.Readonly }
-					{ controlAttrs(data, entity, widget, header, "keyup changed delay:400ms, change")... }
+					{ controlAttrs(data, entity, widget, header, "input changed, change")... }
 				>{ String(widget.Field.Value) }</textarea>
 			case schema.WidgetSelect:
 				<select
@@ -235,15 +301,18 @@ templ Control(data PageData, entity EntityView, widget WidgetView, header bool) 
 					disabled?={ widget.Field.Field.Readonly }
 					{ controlAttrs(data, entity, widget, header, "change")... }
 				>
+					if !validChoice(widget.Field.Field,String(widget.Field.Value)) && (String(widget.Field.Value)!="" || widget.Field.Field.Required) {
+						<option value={ String(widget.Field.Value) } selected disabled>{ selectPlaceholder(widget.Field.Value) }</option>
+					}
 					if !widget.Field.Field.Required {
-						<option value="">Select...</option>
+						<option value="" selected?={ String(widget.Field.Value)=="" }>Select...</option>
 					}
 					for _, option := range choices(widget.Field.Field) {
 						<option value={ option } selected?={ String(widget.Field.Value) == option }>{ option }</option>
 					}
 				</select>
 			case schema.WidgetMultiSelect:
-				<div class="flex flex-wrap gap-x-4 gap-y-2 rounded-md border border-input p-3" id={ fmt.Sprintf("group-%d-%s", entity.Index, widget.Field.Field.Name) }>
+				<div role="group" aria-label={ widget.Field.Field.Label } class="flex flex-wrap gap-x-4 gap-y-2 rounded-md border border-input p-3" id={ fmt.Sprintf("group-%d-%s", entity.Index, domKey(widget.Field.Field.Name)) }>
 					for _, option := range widget.Field.Field.Options {
 						<label class="inline-flex items-center gap-2 text-sm">
 							<input
@@ -253,7 +322,7 @@ templ Control(data PageData, entity EntityView, widget WidgetView, header bool) 
 								value={ option }
 								checked?={ Contains(widget.Field.Value, option) }
 								disabled?={ widget.Field.Field.Readonly }
-								hx-include={ fmt.Sprintf("#group-%d-%s", entity.Index, widget.Field.Field.Name) }
+								hx-include={ fmt.Sprintf("#group-%d-%s", entity.Index, domKey(widget.Field.Field.Name)) }
 								{ controlAttrs(data, entity, widget, false, "change")... }
 							/>
 							{ option }
@@ -261,34 +330,46 @@ templ Control(data PageData, entity EntityView, widget WidgetView, header bool) 
 					}
 				</div>
 			case schema.WidgetToggle:
-				<label class={ switchLabelClass }>
-					<input
-						id={ fieldID(entity.Index, widget.Field.Field.Name) }
-						type="checkbox"
-						role="switch"
-						class="peer sr-only"
-						name="value"
-						checked?={ String(widget.Field.Value) == "true" }
-						disabled?={ widget.Field.Field.Readonly }
-						aria-label={ widget.Field.Field.Label }
-						{ controlAttrs(data, entity, widget, false, "change")... }
-					/>
-					<span class={ switchTrackClass } aria-hidden="true"></span>
-					if widget.Label != "" {
-						<span class="text-sm">{ widget.Label }</span>
-					}
-				</label>
+				if !widget.Field.Field.Required && data.NewFormat {
+					<select id={ fieldID(entity.Index, widget.Field.Field.Name) } name="value" class={ inputClass(header) } disabled?={ widget.Field.Field.Readonly } { controlAttrs(data, entity, widget, header, "change")... }>
+						if value:=String(widget.Field.Value);value!="" && value!="true" && value!="false" {
+							<option value={ value } selected disabled>{ selectPlaceholder(widget.Field.Value) }</option>
+						}
+						<option value="" selected?={ String(widget.Field.Value)=="" }>Unset</option><option value="true" selected?={ String(widget.Field.Value) == "true" }>True</option><option value="false" selected?={ String(widget.Field.Value) == "false" }>False</option>
+					</select>
+				} else {
+					<label class={ switchLabelClass }>
+						<input
+							id={ fieldID(entity.Index, widget.Field.Field.Name) }
+							type="checkbox"
+							role="switch"
+							class="peer sr-only"
+							name="value"
+							checked?={ String(widget.Field.Value) == "true" }
+							disabled?={ widget.Field.Field.Readonly }
+							aria-label={ widget.Field.Field.Label }
+							{ controlAttrs(data, entity, widget, false, "change")... }
+						/>
+						<span class={ switchTrackClass } aria-hidden="true"></span>
+						if widget.ShowLabel && widget.Label != "" {
+							<span class="text-sm">{ widget.Label }</span>
+						}
+					</label>
+				}
 			case schema.WidgetDate, schema.WidgetTime, schema.WidgetDateTime:
 				@Picker(data, entity, widget, header)
 			default:
 				<input
 					id={ fieldID(entity.Index, widget.Field.Field.Name) }
 					type={ inputType(widget.Type) }
+					if widget.Type == schema.WidgetNumber {
+						inputmode="decimal"
+					}
 					name="value"
 					value={ String(widget.Field.Value) }
 					class={ inputClass(header) }
 					disabled?={ widget.Field.Field.Readonly }
-					{ controlAttrs(data, entity, widget, header, "keyup changed delay:400ms, change")... }
+					{ controlAttrs(data, entity, widget, header, "input changed, change")... }
 				/>
 		}
 		@FieldStatus(entity.Index, *widget.Field)
@@ -319,8 +400,9 @@ templ Picker(data PageData, entity EntityView, widget WidgetView, header bool) {
 			placeholder={ pickerPlaceholder(widget.Type) }
 			class={ pickerInputClass(widget.Type, header) }
 			disabled?={ widget.Field.Field.Readonly }
-			if header {
+			if true {
 				aria-label={ widget.Field.Field.Label }
+				aria-describedby={ fmt.Sprintf("status-%d-%s", entity.Index, domKey(widget.Field.Field.Name)) }
 				title={ widget.Field.Field.Label }
 			}
 		/>
@@ -339,9 +421,12 @@ templ Picker(data PageData, entity EntityView, widget WidgetView, header bool) {
 }
 
 templ FieldStatus(index int, field FieldView) {
-	<div id={ fmt.Sprintf("status-%d-%s", index, field.Field.Name) } class={ statusClass(field) }>
+	<div id={ fmt.Sprintf("status-%d-%s", index, domKey(field.Field.Name)) } data-field-status data-invalid={ fmt.Sprint(field.Error != "") } data-changed={ fmt.Sprint(field.Changed) } class={ statusClass(field) }>
 		if field.Error != "" {
 			<span class="text-destructive">{ field.Error }</span>
+			if raw:=invalidValueText(field);raw!="" {
+				<span class="ml-2 whitespace-pre-wrap break-words text-muted-foreground">{ raw }</span>
+			}
 		} else if field.Changed && !field.Compact {
 			<span class="text-changed-foreground">Changed</span>
 		}
@@ -350,21 +435,29 @@ templ FieldStatus(index int, field FieldView) {
 
 // SaveBar is the sticky action bar. With oob it renders as an out-of-band
 // htmx swap that replaces the bar already on the page.
+templ SaveStatus(data PageData, oob bool) {
+	<p id="save-status" { oobAttrs(oob)... } class="text-sm text-muted-foreground" role="status">
+		{ fmt.Sprintf("%d changed field(s)",data.Changes) }
+		if data.HasErrors {
+			<span class="ml-2 text-destructive">Fix validation errors before saving.</span>
+		}
+	</p>
+}
+
 templ SaveBar(data PageData, oob bool) {
-	<div id="save-bar" { oobAttrs(oob)... } class="fixed inset-x-0 bottom-0 border-t bg-background/90 px-4 py-3 backdrop-blur">
-		<div class="mx-auto flex max-w-5xl items-center justify-between gap-4">
-			<p class="text-sm text-muted-foreground">
-				{ fmt.Sprintf("%d changed field(s)", data.Changes) }
-				if data.HasErrors {
-					<span class="ml-2 text-destructive">Fix validation errors before saving.</span>
-				}
-			</p>
-			<div class="flex gap-3">
-				<button class={ outlineButtonClass } hx-post={ templ.SafeURL(fmt.Sprintf("/s/%s/cancel", data.Token)) }>Cancel</button>
-				<button class={ primaryButtonClass } disabled?={ data.HasErrors } hx-post={ templ.SafeURL(fmt.Sprintf("/s/%s/save", data.Token)) }>Save</button>
+	if oob {
+		@SaveStatus(data, true)
+	} else {
+		<div id="save-bar" class="fixed inset-x-0 bottom-0 border-t bg-background/90 px-4 py-3 backdrop-blur">
+			<div class="mx-auto flex max-w-5xl items-center justify-between gap-4">
+				@SaveStatus(data, false)
+				<div class="flex gap-3">
+					<button class={ outlineButtonClass } hx-post={ templ.SafeURL(fmt.Sprintf("/s/%s/cancel", data.Token)) } hx-target="body" hx-swap="innerHTML settle:0ms">Cancel</button>
+					<button class={ primaryButtonClass } hx-post={ templ.SafeURL(fmt.Sprintf("/s/%s/save", data.Token)) } hx-target="body" hx-swap="innerHTML settle:0ms">Save</button>
+				</div>
 			</div>
 		</div>
-	</div>
+	}
 }
 
 // Icon draws a vendored Tabler icon (static/icons/<name>.svg) in the current
@@ -388,4 +481,8 @@ templ DonePage(saved bool) {
 			</main>
 		</body>
 	</html>
+}
+
+templ CellSummary(index int, field FieldView, oob bool) {
+	<summary id={ fmt.Sprintf("summary-%d-%s", index, domKey(field.Field.Name)) } { oobAttrs(oob)... } class="cursor-pointer max-w-full truncate px-2 py-2 text-sm">{ editorSummary(field) }</summary>
 }

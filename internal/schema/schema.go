@@ -3,7 +3,7 @@ package schema
 import (
 	"errors"
 	"fmt"
-	"math"
+	"math/big"
 	"os"
 	"strconv"
 	"strings"
@@ -54,6 +54,7 @@ type Schema struct {
 }
 
 type Document struct {
+	View *View
 	// Title and Description head the page. Both are optional.
 	Title       string
 	Description string
@@ -71,11 +72,14 @@ func Load(path string) (*Document, error) {
 
 func Parse(data []byte) (*Document, error) {
 	var root yaml.Node
-	if err := yaml.Unmarshal(data, &root); err != nil {
+	if err := decodeYAML(data, &root); err != nil {
 		return nil, fmt.Errorf("parse YAML: %w", err)
 	}
 	if len(root.Content) != 1 || root.Content[0].Kind != yaml.MappingNode {
 		return nil, errors.New("input must be a YAML mapping")
+	}
+	if err := uniqueKeys(root.Content[0]); err != nil {
+		return nil, err
 	}
 	doc := root.Content[0]
 	schemaNode := MapValue(doc, "schema")
@@ -99,6 +103,7 @@ func Parse(data []byte) (*Document, error) {
 		return nil, errors.New("entities must be a sequence")
 	}
 	entities := make([]*yaml.Node, len(entitiesNode.Content))
+	ids := map[string]bool{}
 	for i, entity := range entitiesNode.Content {
 		if entity.Kind != yaml.MappingNode {
 			return nil, fmt.Errorf("entity %d must be a mapping", i)
@@ -106,6 +111,25 @@ func Parse(data []byte) (*Document, error) {
 		if MapValue(entity, s.IDField) == nil {
 			return nil, fmt.Errorf("entity %d is missing identifier %q", i, s.IDField)
 		}
+		idNode := deref(MapValue(entity, s.IDField))
+		if idNode == nil || idNode.Kind != yaml.ScalarNode || idNode.Tag == "!!null" || idNode.Value == "" {
+			return nil, fmt.Errorf("entity %d invalid identifier", i)
+		}
+		idKey := idNode.Value
+		for _, f := range s.Fields {
+			if f.Name == s.IDField && f.Type == Number {
+				d, e := NodeDecimal(idNode)
+				if e != nil {
+					return nil, e
+				}
+				r, _ := new(big.Rat).SetString(string(d))
+				idKey = r.RatString()
+			}
+		}
+		if ids[idKey] {
+			return nil, fmt.Errorf("entity %d duplicate identifier", i)
+		}
+		ids[idKey] = true
 		if s.TitleField != "" {
 			if title := MapValue(entity, s.TitleField); title != nil && title.Kind != yaml.ScalarNode {
 				return nil, fmt.Errorf("entity %d title field %q must be a scalar", i, s.TitleField)
@@ -117,6 +141,9 @@ func Parse(data []byte) (*Document, error) {
 			}
 		}
 		for _, field := range s.Fields {
+			if MapValue(entity, field.Name) == nil && field.Required && field.Readonly {
+				return nil, fmt.Errorf("entity %d readonly field %q is required", i, field.Name)
+			}
 			if value := MapValue(entity, field.Name); value != nil {
 				if _, err := ParseNode(field, value); err != nil {
 					return nil, fmt.Errorf("entity %d field %q: %w", i, field.Name, err)
@@ -185,6 +212,9 @@ func ValidateSchema(s Schema) error {
 		}
 		seen[f.Name] = true
 		if f.Name == s.IDField {
+			if f.Type != Text && f.Type != Number {
+				return errors.New("id field must be text or number")
+			}
 			idFound = true
 		}
 		switch f.Type {
@@ -291,17 +321,17 @@ func (s Schema) placeControls() error {
 }
 
 func ParseFormValue(field Field, values []string, present bool) (any, error) {
-	if field.Type == Bool && !present {
-		return false, nil
-	}
-	if len(values) == 0 || (values[0] == "" && field.Type != Bool && field.Type != MultiEnum) {
+	if len(values) == 0 || (values[0] == "" && field.Type != MultiEnum) {
 		if field.Required {
 			return nil, errors.New("is required")
 		}
 		if field.Type == MultiEnum {
 			return []string{}, nil
 		}
-		return "", nil
+		if field.Type == Text || field.Type == LongText {
+			return "", nil
+		}
+		return nil, nil
 	}
 	switch field.Type {
 	case Text, LongText:
@@ -310,11 +340,7 @@ func ParseFormValue(field Field, values []string, present bool) (any, error) {
 		}
 		return values[0], nil
 	case Number:
-		n, err := strconv.ParseFloat(values[0], 64)
-		if err != nil || math.IsNaN(n) || math.IsInf(n, 0) {
-			return nil, errors.New("must be a number")
-		}
-		return n, nil
+		return ParseDecimal(values[0])
 	case Bool:
 		switch values[0] {
 		case "on", "true":
@@ -358,6 +384,12 @@ func parseTemporal(value, message string, layouts ...string) (any, error) {
 
 func ParseNode(field Field, node *yaml.Node) (any, error) {
 	node = deref(node)
+	if node != nil && node.Tag == "!!null" {
+		if field.Required {
+			return nil, errors.New("is required")
+		}
+		return nil, nil
+	}
 	if node == nil || (field.Type != MultiEnum && node.Kind != yaml.ScalarNode) {
 		return nil, errors.New("must be a scalar")
 	}
@@ -366,11 +398,14 @@ func ParseNode(field Field, node *yaml.Node) (any, error) {
 		if node.Kind != yaml.SequenceNode {
 			return nil, errors.New("must be a sequence")
 		}
+		if field.Required && len(node.Content) == 0 {
+			return nil, errors.New("is required")
+		}
 		values := make([]string, len(node.Content))
 		for i, value := range node.Content {
 			value = deref(value)
-			if value == nil || value.Kind != yaml.ScalarNode {
-				return nil, errors.New("options must be scalars")
+			if value == nil || value.Kind != yaml.ScalarNode || value.Tag != "!!str" {
+				return nil, errors.New("options must be strings")
 			}
 			values[i] = value.Value
 		}
@@ -380,7 +415,12 @@ func ParseNode(field Field, node *yaml.Node) (any, error) {
 			return nil, errors.New("must be a boolean")
 		}
 		return strconv.ParseBool(node.Value)
+	case Number:
+		return NodeDecimal(node)
 	default:
+		if node.Tag != "!!str" && node.Tag != "!!timestamp" {
+			return nil, errors.New("must be text")
+		}
 		return ParseFormValue(field, []string{node.Value}, true)
 	}
 }
