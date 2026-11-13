@@ -45,7 +45,7 @@ entities:
 	}
 }
 
-func TestIdentifierChangeUsesOriginalIdentity(t *testing.T) {
+func TestIdentifierIsImmutable(t *testing.T) {
 	doc, err := schema.Parse([]byte(`
 schema:
   id_field: key
@@ -56,13 +56,13 @@ entities: [{key: PROJ-101}]
 		t.Fatal(err)
 	}
 	store := New(doc)
-	if err := store.Edit(0, "key", []string{"PROJ-102"}, true); err != nil {
-		t.Fatal(err)
+	if err := store.Edit(0, "key", []string{"PROJ-102"}, true); err == nil {
+		t.Fatal("identifier must be immutable")
 	}
-	changes := store.Changes()
-	if len(changes) != 1 || changes[0].EntityID != "PROJ-101" || changes[0].To != "PROJ-102" {
-		t.Fatalf("a rename must identify the existing record: %#v", changes)
+	if len(store.Changes()) != 0 {
+		t.Fatal("rejected ID edit changed data")
 	}
+
 }
 
 func TestInvalidEditSetsError(t *testing.T) {

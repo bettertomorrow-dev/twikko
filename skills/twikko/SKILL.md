@@ -5,51 +5,92 @@ description: "Hand a group of structured records (Jira issues, database rows, co
 
 # Twikko
 
-`twikko` is a local CLI. You write records and a field schema to YAML and start it. It serves a temporary web form on `127.0.0.1`, one card per record. The user edits and presses Save or Cancel. It writes a result YAML, prints the status and exits. You then apply the saved changes to the source system. The tool never touches the source system itself.
+Twikko is a local CLI for editing records in a browser. Prepare a reusable
+YAML view and a separate YAML, JSON, or CSV data file. The user edits the
+records in cards or a table. Twikko writes a YAML result; it never updates the
+source system itself.
 
-Use it when you hold several records with many fields and the user must compare values, edit long text, or choose from fixed options. Chat makes that slow and error-prone.
-
-It edits existing records only. It cannot add or delete a record, and it has no JSON or CSV input.
+Use it when several records have enough fields that the user needs to compare
+them or edit them outside chat. It cannot add or delete records.
 
 If `twikko` is not on `PATH`, stop and tell the user. Do not build it yourself.
 
 ## Procedure
 
-1. **Write the input YAML** into a fresh directory from `mktemp -d`. The output path goes in the same directory. A reused path leaves an old result that looks like the new one. Read `assets/example-input.yaml` first.
-2. **Start it** as a background process: `twikko --input <dir>/in.yaml --output <dir>/out.yaml`. It prints `twikko: url=<url>` on stdout. Add `--open` only when the user asks for the browser to be opened.
-3. **Give the user the URL** and tell them to press Save or Cancel when done.
-4. **Wait up to five minutes** for the process to exit. If it is still running, stop your loop and tell the user to say `continue` after they finish. Leave the process running: killing it destroys their edits.
-5. **On `continue`**, check whether the process exited and whether the output file exists, then go to step 6. If it is still running, say so and repeat the URL.
-6. **Read the result** and act on its status.
+1. Create a fresh directory with `mktemp -d`. Write `view.yaml` and a data
+   file there. Choose `data.yaml`, `data.json`, or `data.csv`; read
+   `assets/example-input.yaml` for the legacy format only. Put `out.yaml` in
+   the same directory so an old result cannot be mistaken for this run.
+2. Start Twikko in the background:
 
-## Writing the input
+   ```sh
+   twikko --view <dir>/view.yaml --data <dir>/data.yaml --output <dir>/out.yaml
+   ```
 
-The file has `schema` and `entities`, plus a top-level `title` and `description` that head the page. Always write both. The title names the set of records (`Open bugs, sprint 14`). The description says what the records are and where they came from, in one or two sentences. State facts about the data only. Do not tell the user what to do on the page: it already has Save and Cancel, and a line such as "review and save" is noise. `schema.id_field` names the field that identifies each record. `schema.fields` lists the fields to show, each with `name`, optional `label`, `type`, optional `required` and `readonly`.
+   Use the matching data extension. Add `--open` only if the user asks for
+   the browser to open automatically. The process prints `twikko: url=<url>`.
+3. Give the user the URL and ask them to save or cancel when finished.
+4. Wait up to five minutes for the process to exit. If it is still running,
+   leave it running and tell the user to say `continue` when finished.
+5. On `continue`, check process status and whether `out.yaml` exists. If the
+   process is still running, report that and repeat the URL. Otherwise read
+   the result.
 
-- `type` is one of `text`, `longtext`, `number`, `bool`, `enum`, `multienum`, `date`, `time`, `datetime`.
-- `enum` and `multienum` need `options`. No other type may have them. Take the options from the source system, not from guesses. An entity value outside its options makes the whole load fail.
-- `bool` values must be real YAML booleans. `multienum` values must be a list. `date` values are `YYYY-MM-DD`, `time` values `HH:MM`, and `datetime` values `YYYY-MM-DDTHH:MM`, both without a time zone. `number` values must be numeric.
-- Mark `readonly: true` on fields the user should see but not change. Show the identifier and any context field that way.
-- Omit a field that has no value. Do not write `null`: a number field rejects it at load.
-- **Choose the card header.** By default it shows the identifier. Use at most one of these three, because combining them fails the load:
-  - `schema.title_field`: the name of an entity key that holds the title text. Keep it out of `schema.fields`: a declared field becomes an input, and the user could edit the title. Combine a short identifier with the title (`PROJ-1 · Fix login`); use a short descriptive title alone for a long or opaque identifier such as a UUID. It is fixed text and does not follow edits. An entity without the key shows its identifier.
-  - `schema.header`, a list of widgets drawn side by side between the eye toggle and the menu (see Widgets below). A display widget's `source` is an entity key, or a dotted path such as `reporter.name`, holding a scalar. An entity with no value there skips the widget. `icon` and `tag` take `variants`, which map a value (matched exactly) to `{icon, intent}`. `intent` is `neutral`, `info`, `success`, `warning` or `danger`; only an icon variant takes `icon`. An icon whose value matches no variant draws a neutral diamond. `text` takes `style` with `bold`, `italic` and `muted`. Icon names are vendored Tabler icons, and an unknown name fails the load with the list of valid ones. Widgets read the current values, so one bound to an editable field follows the user's edits.
-  - `schema.header: { template: <name> }`, a built-in widget list shipped with `twikko`. Use `gojira` for tickets pulled by the gojira skill. An unknown name fails the load with the list of available ones. A template cannot be extended: write the widgets out to change one.
-- **Choose the card body.** By default every field shows in a two-column grid. `schema.body` is a list of rows, each a list of one to four widgets (at most ten rows) that share the row width equally. Use it when the data needs a shape: a long text on its own full-width row, related fields side by side. `schema.body: { template: <name> }` selects a built-in layout, such as `gojira`. Do not write rows by hand when a template fits.
-  - **A field no control places is hidden** once a body is set, but it is kept in the output. The load fails if a field has two controls, a control names an undeclared field, a required editable field is left out, or a limit is broken.
-- **Widgets.** Header and body take the same widgets, `{type, source, label, options, variants, style}`. A widget either shows a value or edits a field:
-  - **Lines** (`vline`, `hline`) draw a 1px separator and take no `source`, only an optional `intent`. A `vline` sits between two widgets of a row or the header and takes only its own width. An `hline` is a row of its own in the body. Lines do not count toward the row and column limits.
-  - **Display widgets** (`icon`, `tag`, `text`) are read-only, with a `source` that is an entity key or dotted path. In the body, `label` is a caption above the value. They follow edits made elsewhere on the card.
-  - **Controls** edit the schema field `source` names. Leave `type` out (it means `control`) and the field's type picks the control: `text` gets an input, `longtext` a textarea, `number` a number box, `bool` an on/off switch, `enum` a select, `multienum` checkboxes, `date`/`time`/`datetime` their pickers.
-  - **Override the control** only for a tailored case, by naming it as `type`: `textarea` or `select` for a `text` field, `input` for a `longtext` field. `select` over a `text` field needs `options` on the widget, and the field then accepts only those values. A control that does not fit the field fails the load and the error lists the ones that do. Do not use `options` anywhere else.
-  - `label` replaces the field label. A `toggle` shows its label to the right of the switch, and no label means no text. A control in the header shows no label and keeps it as a tooltip, so put a control there only when its meaning is obvious, such as a status select next to a status tag.
-  - A control in the header can be edited while the card is collapsed.
-- Keep entity keys that are not in the schema. They are not shown, and they come back unchanged in the output. Use them to carry what you need to apply the result, such as an internal id, a URL or a version. A title key and header sources such as `type` are often of this kind.
+## Writing the view and data
+
+The view is a complete YAML document with `version: 1`, a `schema`, and
+optional `view` settings. Keep it separate from the records so the same view
+can load YAML, JSON, or CSV. See `assets/example-input.yaml` only for field
+type syntax; it is a legacy single-file input. Examples in the repository use
+invented data.
+
+Declare fields with `name`, `type`, optional `label`, `required`, and
+`readonly`. Types are `text`, `longtext`, `number`, `bool`, `enum`,
+`multienum`, `date`, `time`, and `datetime`. Enum and multienum need `options`.
+Use actual booleans and arrays in YAML/JSON. Dates are `YYYY-MM-DD`, times are
+`HH:MM`, and datetimes are `YYYY-MM-DDTHH:MM` without a time zone. Preserve
+values from the source; never invent a missing business value. Mark values the
+user cannot change as read-only.
+
+YAML and JSON files contain a top-level list of objects. CSV's first row has
+unique, non-empty field names. The delimiter defaults to comma and can be set
+at `import.csv.delimiter` in the view. CSV multienum cells contain a JSON
+array, for example `["docs","ui"]`. Unknown fields and nested values stay in
+the output.
+
+If `schema.id_field` is declared, it must be a text or number field with
+non-empty, unique values. IDs cannot be edited. Without an ID field, records
+are still addressable in the result by their zero-based source position.
 
 ## Reading the result
 
-Stdout ends with `twikko: status=<saved|cancelled> output=<path>`. The exit code is 0 for saved, 2 for cancelled, and 1 for an error.
+Read stdout for `twikko: status=<saved|cancelled> output=<path>`. Exit code 0
+means saved, 2 means cancelled, and 1 means an error.
 
-- **Saved (exit 0).** `changes` lists one entry per changed field: `entity_id`, `field`, `from`, `to`. `entities` holds every record in its final form. The user pressing Save is their approval of those changes, so apply `changes` to the source system and nothing beyond them. A cleared optional field comes back as `""` or `[]`: map that to the source system's way of unsetting a value. If `changes` is empty, the user saved without editing anything: apply nothing.
-- **Cancelled (exit 2).** The output holds only `status: cancelled`. Apply nothing and tell the user.
-- **Error (exit 1).** Stdout has `twikko: error=<message>`. If the message names the input, fix the input and start again. Otherwise report it to the user.
+- **Saved (exit 0):** `entities` contains every record in final form and
+  `changes` contains changed fields. Apply only those changes to the source.
+  With an ID, each change has `entity_id` as the string form of the original
+  ID. Without an ID, it has `record_index`, zero-based including `0`, and no
+  `entity_id`. Do not treat that index as a user ID. `field` names the field.
+  `to` is always present. `from` is omitted only when the original key was
+  missing; `from: null` means the key existed with null. A cleared text value
+  is `""`, nullable scalar values are `null`, and a cleared multienum is `[]`.
+  Map these to the source system's corresponding empty state. If `changes` is
+  empty, the user saved without edits, so apply nothing.
+- **Cancelled (exit 2):** `status` is `cancelled`. Apply nothing and tell the
+  user.
+- **Error (exit 1):** report the error. Correct an input error before starting
+  another session.
+
+Untouched missing, null, empty string, and empty array remain distinct.
+Required rejects all four but accepts `false` and `0`. Text whitespace is
+preserved. Numbers remain exact decimal values; do not convert them through a
+binary float when applying changes. JSON numeric input is likewise read
+without floating-point conversion.
+
+## Legacy transition
+
+The older `twikko --input <path> --output <path>` mode remains supported for
+single-file YAML. Its old `schema.header` and `schema.body` settings, including
+built-in template references, remain available there. Do not mix `--input`
+with `--view` or `--data`. New sessions should use the two-file contract.

@@ -12,30 +12,32 @@ entities in a temporary local web UI. Twikko writes the result to YAML
 after the user saves or cancels. The agent then applies the saved changes to
 the source system.
 
-## POC scope
+## Product scope
 
 - Edit existing entities only. Do not add or delete entities.
-- Accept YAML input with an explicit schema.
+- Accept a reusable YAML view and separate YAML, JSON, or CSV data.
 - Support text, multiline text, number, boolean, enum, multi-select, and date
   fields.
 - A field can be read-only regardless of its type.
 - Validate required fields, field types, and enum values before saving.
-- Write the complete resulting entities and a per-field change summary.
+- Offer card and table views over one editing session.
+- Write complete resulting entities and a per-field change summary in YAML.
 
-Out of scope for the POC:
+Out of scope:
 
 - Remote hosting, authentication, or multi-user editing.
 - Direct Jira, database, or other third-party integrations.
-- JSON or CSV input.
 - Schema inference.
 - Validation rules such as ranges, regular expressions, or string lengths.
 - Persistence between sessions.
 
 ## Agent interaction protocol
 
-1. The agent creates an input YAML file and chooses an output YAML path.
-2. The agent launches `twikko --input <path> --output <path>` as a
-   background process.
+1. The agent creates a view YAML file, a YAML/JSON/CSV data file, and chooses
+   an output YAML path.
+2. The agent launches `twikko --view <view> --data <data> --output <path>` as
+   a background process. The legacy `--input <path>` single-YAML mode remains
+   supported separately and cannot be combined with the new flags.
 3. Twikko prints its localhost URL to stdout. The agent gives that URL to
    the user.
 4. The user edits the entities and selects Save or Cancel.
@@ -78,7 +80,8 @@ resuming its work.
 
 ## UI conventions
 
-- Show one entity per card. The card header shows the schema's `header` widgets,
+- Show one entity per card. In the new format, the card header shows
+  `view.cards.header` widgets. Legacy `--input` uses `schema.header` as before,
   else its `title_field` value, else the identifier field. Widgets sit between
   the eye toggle and the ellipsis menu, left-aligned with an equal gap. A widget
   with no value is skipped. Widgets read the current values, so editing a field
@@ -87,7 +90,7 @@ resuming its work.
   control edits a field, with the control picked from the field's data type
   unless the widget names another that fits it. A field has one control across
   header and body.
-- Lay the card body out in the rows and columns of the schema's `body` (one to
+- Lay the card body out in the rows and columns of `view.cards.body` (one to
   four widgets per row, up to ten rows, equal widths, one column on a narrow
   screen), else a two-column grid of every field that no header control edits.
   Fields a body does not place are hidden but kept in the output. Display
@@ -131,7 +134,7 @@ information into git history, and a later edit does not remove it from there.
 
 ## Documentation
 
-The POC product requirements live in [docs/PRD.md](docs/PRD.md).
+Product requirements live in [docs/PRD.md](docs/PRD.md).
 
 ## Development commands
 
@@ -141,5 +144,16 @@ The POC product requirements live in [docs/PRD.md](docs/PRD.md).
 - `make fmt` formats Go and templ files.
 - `make test` runs the Go test suite.
 - `make build` creates `bin/twikko`.
-- `make run` starts the example editor and writes its output to
+- `make run` starts the CSV example editor and writes its output to
   `/tmp/twikko-out.yaml`.
+
+The first-version support target is 200 records × 20 fields, up to 2 MiB and
+20 multienum options. These are support and measurement targets, not truncation
+limits. Opening/switching views (2 s), server response p95 (300 ms), and Save
+(2 s) are goals only; do not describe them as measured results until a run has
+recorded measurements.
+
+For the two-file value, identity, change-summary, and label semantics, follow
+`docs/implementation-plan-data-views.md`'s accepted stage 0 decisions and
+`docs/PRD.md`. In particular, no ID means `record_index` starting at zero;
+missing `from` differs from `from: null`, and `to` is always present.

@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -104,5 +105,34 @@ func TestRunVersion(t *testing.T) {
 	}
 	if stdout.String() != "twikko "+version+"\n" {
 		t.Fatalf("unexpected version: %q", stdout.String())
+	}
+}
+
+func TestProtectInputAliases(t *testing.T) {
+	dir := t.TempDir()
+	in := filepath.Join(dir, "data.yaml")
+	link := filepath.Join(dir, "link.yaml")
+	hard := filepath.Join(dir, "hard.yaml")
+	if err := os.WriteFile(in, []byte("[]"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	aliases := []string{in, hard}
+	if err := os.Symlink(in, link); err == nil {
+		aliases = append(aliases, link)
+	} else if runtime.GOOS == "windows" {
+		t.Logf("symlink unavailable on this Windows runner: %v", err)
+	} else {
+		t.Fatal(err)
+	}
+	if err := os.Link(in, hard); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range aliases {
+		if protectInput(in, p) == nil {
+			t.Fatalf("accepted output %s", p)
+		}
+	}
+	if err := protectInput(in, filepath.Join(dir, "out.yaml")); err != nil {
+		t.Fatal(err)
 	}
 }

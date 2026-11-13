@@ -492,7 +492,7 @@ func TestHeaderControlEditsAndLeavesItselfAlone(t *testing.T) {
 	if strings.Contains(edited, `id="field-0-status"`) {
 		t.Fatalf("the control being edited must not be re-rendered: %s", edited)
 	}
-	for _, want := range []string{`id="entity-badges-0"`, `id="widget-0-h-2"`, ">Done</span>", `id="save-bar"`} {
+	for _, want := range []string{`id="entity-badges-0"`, `id="widget-0-h-2"`, ">Done</span>", `id="save-status"`} {
 		if !strings.Contains(edited, want) {
 			t.Errorf("edit response lacks %q: %s", want, edited)
 		}
@@ -524,7 +524,7 @@ func TestToggleSwitchesOnAndOff(t *testing.T) {
 	if on := post(t, server, "/entities/0/fields/blocked", "value=on"); !strings.Contains(on, "Changed") {
 		t.Fatalf("turning the switch on is a change: %s", on)
 	}
-	if off := post(t, server, "/entities/0/fields/blocked", ""); strings.Contains(off, "Changed") {
+	if off := post(t, server, "/entities/0/fields/blocked", "value=false"); strings.Contains(off, "Changed") {
 		t.Fatalf("turning it back off restores the input value: %s", off)
 	}
 }

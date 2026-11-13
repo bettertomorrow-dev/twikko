@@ -51,4 +51,4 @@ fmt:
 	go tool templ fmt internal/ui
 
 run:
-	go run . --input examples/jira.yaml --output /tmp/twikko-out.yaml --open
+	go run . --view examples/tasks.view.yaml --data examples/tasks.csv --output /tmp/twikko-out.yaml --open

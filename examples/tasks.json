@@ -1,0 +1,20 @@
+[
+  {
+    "id": "TASK-201",
+    "title": "Tune keyboard focus",
+    "status": "In Progress",
+    "estimate": 2.75,
+    "due": "2026-12-04",
+    "labels": ["ui", "testing"],
+    "approved": false
+  },
+  {
+    "id": "TASK-202",
+    "title": "Document import behavior",
+    "status": "Backlog",
+    "estimate": 9007199254740993,
+    "due": null,
+    "labels": ["docs"],
+    "approved": null
+  }
+]

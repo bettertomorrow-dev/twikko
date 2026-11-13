@@ -1,7 +1,10 @@
 package ui
 
 import (
+	"encoding/base64"
 	"fmt"
+	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -179,7 +182,8 @@ type EntityView struct {
 	Rows    []RowView
 	// Grid is the default body: a control for every field the header does not
 	// place. It is empty when the schema has a body.
-	Grid []WidgetView
+	Grid  []WidgetView
+	Cells []WidgetView
 }
 
 // RowView is one row of the card body.
@@ -199,7 +203,8 @@ type WidgetView struct {
 	// Type is the display type, or for a control the kind it resolved to.
 	Type schema.WidgetType
 	// Label is a display caption or a toggle's visible text.
-	Label string
+	Label     string
+	ShowLabel bool
 	// Text is the tag or text content, and the accessible name of an icon.
 	Text     string
 	Icon     string
@@ -208,7 +213,20 @@ type WidgetView struct {
 	Field    *FieldView
 }
 
+func showWidgetLabel(global, local *bool, fallback bool) bool {
+	if local != nil {
+		return *local
+	}
+	if global != nil {
+		return *global
+	}
+	return fallback
+}
+
 type PageData struct {
+	NewFormat   bool
+	Mode        string
+	Columns     []WidgetView
 	Token       string
 	AssetBase   string
 	Title       string
@@ -230,6 +248,8 @@ func pageTitle(title string) string {
 func NewPageData(store *session.Store, token string) PageData {
 	s := store.Schema()
 	data := PageData{
+		NewFormat:   store.View() != nil,
+		Mode:        store.Mode(),
 		Token:       token,
 		Title:       pageTitle(store.Title()),
 		Description: store.Description(),
@@ -238,10 +258,39 @@ func NewPageData(store *session.Store, token string) PageData {
 		HasErrors:   store.HasErrors(),
 		Entities:    make([]EntityView, store.EntityCount()),
 	}
+	var globalLabels *bool
+	if v := store.View(); v != nil && v.ShowLabels != nil {
+		globalLabels = v.ShowLabels
+	}
+	var columns []schema.Widget
+	if v := store.View(); v != nil {
+		columns = v.Table.Columns
+	}
+	if len(columns) == 0 {
+		for _, f := range s.Fields {
+			columns = append(columns, schema.Widget{Type: schema.WidgetControl, Source: f.Name})
+		}
+	}
+	for _, w := range columns {
+		label := w.Label
+		if label == "" {
+			label = w.Source
+			for _, f := range s.Fields {
+				if f.Name == w.Source {
+					label = f.Label
+					break
+				}
+			}
+		}
+		data.Columns = append(data.Columns, WidgetView{Label: label, ShowLabel: showWidgetLabel(globalLabels, w.ShowLabel, true)})
+	}
 	inHeader := headerControls(s)
 	for index := range data.Entities {
 		entity := store.Entity(index)
 		id := nodeText(schema.MapValue(entity, s.IDField))
+		if id == "" {
+			id = fmt.Sprintf("Record %d", index+1)
+		}
 		title := id
 		if s.TitleField != "" {
 			if custom := nodeText(schema.MapValue(entity, s.TitleField)); custom != "" {
@@ -263,7 +312,7 @@ func NewPageData(store *session.Store, token string) PageData {
 				Value:   store.FieldValue(index, field),
 				Error:   store.Error(index, field.Name),
 				Changed: store.IsChanged(index, field.Name),
-				Compact: inHeader[field.Name],
+				Compact: inHeader[field.Name] && data.Mode != "table",
 			}
 			fv := &view.Fields[fieldIndex]
 			byName[field.Name] = fv
@@ -274,11 +323,28 @@ func NewPageData(store *session.Store, token string) PageData {
 				view.HasErrors = true
 			}
 		}
+		{
+			view.Cells = resolveWidgets(columns, entity, byName, func(i int) string { return fmt.Sprintf("widget-%d-t-%d", index, i) }, bodyTextWidgetClass, globalLabels, false)
+			for i := range view.Cells {
+				w := &view.Cells[i]
+				w.ShowLabel = showWidgetLabel(globalLabels, columns[i].ShowLabel, true)
+				if w.Label == "" {
+					if w.Field != nil {
+						w.Label = w.Field.Field.Label
+					} else if f := byName[columns[i].Source]; f != nil {
+						w.Label = f.Field.Label
+					} else {
+						w.Label = columns[i].Source
+					}
+				}
+			}
+
+		}
 		if s.Header != nil {
 			view.HasHeader = true
 			view.Widgets = resolveWidgets(s.Header.Widgets, entity, byName, func(i int) string {
 				return fmt.Sprintf("widget-%d-h-%d", index, i)
-			}, textWidgetClass)
+			}, textWidgetClass, globalLabels, true)
 			view.Title = headerTitle(view.Widgets, id)
 		}
 		switch {
@@ -292,13 +358,15 @@ func NewPageData(store *session.Store, token string) PageData {
 					Style: style,
 					Widgets: resolveWidgets(row, entity, byName, func(c int) string {
 						return fmt.Sprintf("widget-%d-%d-%d", index, r, c)
-					}, bodyTextWidgetClass),
+					}, bodyTextWidgetClass, globalLabels, false),
 				}
 			}
 		default:
 			for i := range view.Fields {
 				if !inHeader[view.Fields[i].Field.Name] {
-					view.Grid = append(view.Grid, autoControl(&view.Fields[i]))
+					w := autoControl(&view.Fields[i])
+					w.ShowLabel = showWidgetLabel(globalLabels, nil, w.Type != schema.WidgetToggle)
+					view.Grid = append(view.Grid, w)
 				}
 			}
 		}
@@ -323,29 +391,40 @@ func headerControls(s schema.Schema) map[string]bool {
 // autoControl is the control the field's data type calls for.
 func autoControl(field *FieldView) WidgetView {
 	kind, _ := schema.ControlKind(schema.Widget{Type: schema.WidgetControl}, field.Field)
-	return WidgetView{Type: kind, Field: field}
+	return WidgetView{Type: kind, Field: field, ShowLabel: kind != schema.WidgetToggle}
 }
 
 // resolveWidgets resolves a list of widgets for one entity. id names the display
 // slot at a position. textClass is the base class of a text widget, which
 // differs between the header (truncates) and the body (wraps).
-func resolveWidgets(widgets []schema.Widget, entity *yaml.Node, fields map[string]*FieldView, id func(int) string, textClass string) []WidgetView {
+func resolveWidgets(widgets []schema.Widget, entity *yaml.Node, fields map[string]*FieldView, id func(int) string, textClass string, globalLabels *bool, header bool) []WidgetView {
 	views := make([]WidgetView, len(widgets))
 	for i, widget := range widgets {
-		views[i] = resolveWidget(widget, entity, fields, textClass)
+		views[i] = resolveWidget(widget, entity, fields, textClass, globalLabels, header)
 		views[i].ID = id(i)
 	}
 	return views
 }
 
-func resolveWidget(widget schema.Widget, entity *yaml.Node, fields map[string]*FieldView, textClass string) WidgetView {
+func resolveWidget(widget schema.Widget, entity *yaml.Node, fields map[string]*FieldView, textClass string, globalLabels *bool, header bool) WidgetView {
 	if widget.IsLine() {
 		return WidgetView{Type: widget.Type, Class: lineClass(widget)}
 	}
 	if widget.IsControl() {
-		return resolveControl(widget, fields[widget.Source])
+		view := resolveControl(widget, fields[widget.Source])
+		view.ShowLabel = showWidgetLabel(globalLabels, widget.ShowLabel, (!header && view.Type != schema.WidgetToggle) || widget.Label != "")
+		if view.Type == schema.WidgetToggle && view.Label == "" && view.ShowLabel {
+			view.Label = view.Field.Field.Label
+		}
+		return view
 	}
-	view := WidgetView{Type: widget.Type, Label: widget.Label}
+	view := WidgetView{Type: widget.Type, Label: widget.Label, ShowLabel: showWidgetLabel(globalLabels, widget.ShowLabel, !header || widget.Label != "")}
+	if view.Label == "" && (widget.ShowLabel != nil || globalLabels != nil) {
+		view.Label = widget.Source
+		if f := fields[widget.Source]; f != nil {
+			view.Label = f.Field.Label
+		}
+	}
 	value, ok, err := schema.HeaderValue(entity, widget.Source)
 	if err != nil || !ok {
 		return view
@@ -448,6 +527,8 @@ func String(value any) string {
 		return typed
 	case float64:
 		return strconv.FormatFloat(typed, 'f', -1, 64)
+	case schema.Decimal:
+		return string(typed)
 	case bool:
 		if typed {
 			return "true"
@@ -462,7 +543,7 @@ func String(value any) string {
 func inputType(kind schema.WidgetType) string {
 	switch kind {
 	case schema.WidgetNumber:
-		return "number"
+		return "text"
 	case schema.WidgetDate:
 		return "date"
 	case schema.WidgetTime:
@@ -552,6 +633,9 @@ func nodeText(node *yaml.Node) string {
 	if node == nil {
 		return ""
 	}
+	for node.Kind == yaml.AliasNode {
+		node = node.Alias
+	}
 	return node.Value
 }
 
@@ -570,7 +654,7 @@ func oobAttrs(oob bool) templ.Attributes {
 }
 
 func fieldID(entityIndex int, name string) string {
-	return fmt.Sprintf("field-%d-%s", entityIndex, name)
+	return fmt.Sprintf("field-%d-%s", entityIndex, domKey(name))
 }
 
 func inputClass(header bool) string {
@@ -617,14 +701,71 @@ func statusClass(field FieldView) string {
 func controlAttrs(data PageData, entity EntityView, widget WidgetView, header bool, trigger string) templ.Attributes {
 	name := widget.Field.Field.Name
 	attrs := templ.Attributes{
-		"hx-post":    fmt.Sprintf("/s/%s/entities/%d/fields/%s", data.Token, entity.Index, name),
+		"hx-post":    fmt.Sprintf("/s/%s/entities/%d/fields/%s", data.Token, entity.Index, url.PathEscape(name)),
 		"hx-trigger": trigger,
-		"hx-target":  fmt.Sprintf("#status-%d-%s", entity.Index, name),
-		"hx-swap":    "outerHTML",
+		"hx-target":  fmt.Sprintf("#status-%d-%s", entity.Index, domKey(name)),
+		"hx-swap":    "outerHTML settle:0ms",
+		"hx-vals":    `{"present":"true"}`,
 	}
-	if header {
-		attrs["aria-label"] = widget.Field.Field.Label
-		attrs["title"] = widget.Field.Field.Label
+	if widget.Type == schema.WidgetToggle && (widget.Field.Field.Required || !data.NewFormat) {
+		attrs["hx-vals"] = `js:{present:'true',value:this.checked?'true':'false'}`
 	}
+	attrs["aria-describedby"] = fmt.Sprintf("status-%d-%s", entity.Index, domKey(name))
+	attrs["aria-invalid"] = fmt.Sprint(widget.Field.Error != "")
+	attrs["aria-label"] = widget.Field.Field.Label
+	attrs["title"] = widget.Field.Field.Label
 	return attrs
+}
+
+func columnHeading(w WidgetView) string {
+	if w.Label != "" {
+		return w.Label
+	}
+	if w.Field != nil {
+		return w.Field.Field.Label
+	}
+	return w.ID
+}
+
+func invalidValueText(field FieldView) string {
+	switch field.Field.Type {
+	case schema.Enum, schema.MultiEnum, schema.Bool:
+		return fmt.Sprintf("Current input: %v", field.Value)
+	}
+	return ""
+}
+func editorSummary(field FieldView) string {
+	if field.Field.Type == schema.MultiEnum {
+		if values, ok := field.Value.([]string); ok && len(values) > 0 {
+			return strings.Join(values, ", ")
+		}
+	}
+	if s := String(field.Value); s != "" {
+		return s
+	}
+	return "Edit"
+}
+
+func validChoice(field schema.Field, value string) bool {
+	for _, option := range choices(field) {
+		if option == value {
+			return true
+		}
+	}
+	return false
+}
+func selectPlaceholder(value any) string {
+	if text := String(value); text != "" {
+		return "Invalid: " + text
+	}
+	return "Select..."
+}
+
+var simpleDOMKey = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]*$`)
+
+func domKey(name string) string {
+	if simpleDOMKey.MatchString(name) {
+		return name
+	}
+	return "--" + base64.RawURLEncoding.EncodeToString([]byte(name))
 }

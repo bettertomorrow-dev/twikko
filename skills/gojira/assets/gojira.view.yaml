@@ -1,0 +1,49 @@
+version: 1
+title: Jira issue review
+description: Read-only issue view for records prepared by the gojira skill.
+
+schema:
+  id_field: key
+  fields:
+    - { name: key, label: Key, type: text, readonly: true }
+    - { name: title, label: Title, type: text, readonly: true }
+    - { name: type, label: Type, type: text, readonly: true }
+    - { name: creator, label: Creator, type: text, readonly: true }
+    - { name: created, label: Created, type: date, readonly: true }
+    - { name: due, label: Due, type: date, readonly: true }
+    - { name: assignee, label: Assignee, type: text, readonly: true }
+    - { name: status, label: Status, type: text, readonly: true }
+    - { name: summary, label: Summary, type: longtext, readonly: true }
+
+view:
+  mode: cards
+  cards:
+    header:
+      - type: icon
+        source: type
+        variants:
+          Bug: { icon: bug, intent: danger }
+          Task: { icon: checkbox, intent: info }
+          Sub-task: { icon: subtask, intent: info }
+          Story: { icon: bookmark, intent: success }
+          Feature: { icon: sparkles, intent: success }
+          Improvement: { icon: trending-up, intent: success }
+          Epic: { icon: bolt, intent: warning }
+          Initiative: { icon: target, intent: warning }
+          Spike: { icon: flask, intent: neutral }
+      - { type: tag, source: key }
+      - { type: text, source: title, style: { bold: true } }
+      - type: tag
+        source: status
+        variants:
+          In Progress: { intent: info }
+          In Review: { intent: info }
+          QA: { intent: warning }
+          Blocked: { intent: danger }
+          Done: { intent: success }
+    body:
+      - - { type: text, label: Creator, source: creator }
+        - { type: text, label: Assignee, source: assignee }
+        - { type: text, label: Created, source: created }
+        - { type: text, label: Due, source: due }
+      - - { type: text, label: Summary, source: summary }
