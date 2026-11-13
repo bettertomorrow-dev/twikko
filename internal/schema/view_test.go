@@ -135,3 +135,35 @@ func TestCSVRejectsNonDecimalNumberNotation(t *testing.T) {
 		}
 	}
 }
+
+func TestLaunchModeValidatesOnlyReachableEditors(t *testing.T) {
+	dir := t.TempDir()
+	v := filepath.Join(dir, "v.yaml")
+	d := filepath.Join(dir, "d.yaml")
+	os.WriteFile(v, []byte(`version: 1
+schema:
+  fields:
+    - {name: title, type: text}
+    - {name: n, type: number}
+view:
+  mode: cards
+  cards:
+    body: [[{source: title}]]
+  table:
+    columns: [{source: n}]
+`), 0600)
+	os.WriteFile(d, []byte("- {title: Before, n: invalid}\n"), 0600)
+	if _, err := LoadView(v, d); err == nil {
+		t.Fatal("cards opened with an unfixable hidden value")
+	}
+	doc, err := LoadViewWithMode(v, d, "table")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if doc.View.Mode != "table" {
+		t.Fatal("launch override ignored")
+	}
+	if _, err := LoadViewWithMode(v, d, "grid"); err == nil {
+		t.Fatal("accepted invalid launch mode")
+	}
+}

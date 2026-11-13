@@ -380,15 +380,6 @@ func equalNodes(field schema.Field, a, b *yaml.Node, seen map[[2]*yaml.Node]bool
 
 func (s *Store) View() *schema.View { return s.view }
 func (s *Store) Mode() string       { s.mu.RLock(); defer s.mu.RUnlock(); return s.mode }
-func (s *Store) SetMode(mode string) error {
-	if mode != "cards" && mode != "table" {
-		return errors.New("invalid view mode")
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.mode = mode
-	return nil
-}
 
 func cloneEntities(entities []*yaml.Node) []*yaml.Node {
 	result := make([]*yaml.Node, len(entities))

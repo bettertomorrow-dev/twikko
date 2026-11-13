@@ -20,7 +20,8 @@ the source system.
   fields.
 - A field can be read-only regardless of its type.
 - Validate required fields, field types, and enum values before saving.
-- Offer card and table views over one editing session.
+- Choose cards or a table at launch with `view.mode` or the `--mode` override.
+  Keep that view fixed during the session.
 - Write complete resulting entities and a per-field change summary in YAML.
 
 Out of scope:
@@ -115,6 +116,9 @@ resuming its work.
 - Show validation feedback next to the field that caused it.
 - Mark changed fields.
 - Keep Save and Cancel visible while the user scrolls.
+- Tables use thin horizontal and vertical grid lines. Cell editors have no
+  separate borders or repeated visible captions. Columns resize by dragging
+  header boundaries, with keyboard resizing also supported.
 
 ## Example data
 
@@ -149,7 +153,7 @@ Product requirements live in [docs/PRD.md](docs/PRD.md).
 
 The first-version support target is 200 records × 20 fields, up to 2 MiB and
 20 multienum options. These are support and measurement targets, not truncation
-limits. Opening/switching views (2 s), server response p95 (300 ms), and Save
+limits. Opening either view (2 s), server response p95 (300 ms), and Save
 (2 s) are goals only; do not describe them as measured results until a run has
 recorded measurements.
 

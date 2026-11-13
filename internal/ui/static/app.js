@@ -470,15 +470,6 @@ document.addEventListener("keydown", function (event) {
   });
 })();
 
-// Keep the view buttons in place while queued requests finish.
-document.addEventListener("htmx:afterSwap", function () {
-  var entities = document.getElementById("entities");
-  if (!entities) return;
-  document.querySelectorAll("[data-mode-button]").forEach(function (button) {
-    button.setAttribute("aria-pressed", String(button.dataset.modeButton === entities.dataset.viewMode));
-  });
-});
-
 // Update state without replacing the editor or its focus.
 document.addEventListener("htmx:afterSettle", function (event) {
   var root = event.detail.target;
@@ -496,7 +487,7 @@ document.addEventListener("htmx:afterSettle", function (event) {
 
 function transitionRoot(element, target) {
   var path = element.getAttribute("hx-post") || "";
-  if (!/\/(mode(?:\?|$)|save$|cancel$|reset$|collapsed$)/.test(path)) return null;
+  if (!/\/(save$|cancel$|reset$|collapsed$)/.test(path)) return null;
   var selector = element.getAttribute("hx-target");
   var root = target || (selector && document.querySelector(selector));
   return !root || root === document.body ? document.getElementById("entities") : root;
@@ -523,3 +514,48 @@ document.addEventListener("htmx:afterRequest", function (event) {
   root.inert = false;
   root.removeAttribute("aria-busy");
 });
+
+// Column widths live on col elements, so row resets leave them unchanged.
+(function () {
+  var drag = null;
+  var MIN_WIDTH = 96;
+
+  function resize(handle, width) {
+    var table = handle.closest("table");
+    var column = table.querySelectorAll("col")[Number(handle.dataset.columnResize)];
+    var oldWidth = parseFloat(column.style.width);
+    width = Math.max(MIN_WIDTH, Math.round(width));
+    column.style.width = width + "px";
+    table.style.width = (parseFloat(table.style.width) + width - oldWidth) + "px";
+    handle.setAttribute("aria-valuenow", String(width));
+  }
+
+  document.addEventListener("pointerdown", function (event) {
+    var handle = event.target.closest("[data-column-resize]");
+    if (!handle || event.button !== 0) return;
+    event.preventDefault();
+    drag = { handle: handle, x: event.clientX, width: Number(handle.getAttribute("aria-valuenow")), pointer: event.pointerId };
+    handle.setPointerCapture(event.pointerId);
+  });
+  document.addEventListener("pointermove", function (event) {
+    if (!drag || drag.pointer !== event.pointerId) return;
+    resize(drag.handle, drag.width + event.clientX - drag.x);
+  });
+  function endDrag(event) {
+    if (!drag || drag.pointer !== event.pointerId) return;
+    var handle = drag.handle;
+    drag = null;
+    if (handle.hasPointerCapture(event.pointerId)) handle.releasePointerCapture(event.pointerId);
+  }
+  document.addEventListener("pointerup", endDrag);
+  document.addEventListener("pointercancel", endDrag);
+  document.addEventListener("lostpointercapture", function () { drag = null; });
+  document.addEventListener("keydown", function (event) {
+    var handle = event.target.closest("[data-column-resize]");
+    if (!handle || !["ArrowLeft", "ArrowRight", "Home"].includes(event.key)) return;
+    event.preventDefault();
+    var width = Number(handle.getAttribute("aria-valuenow"));
+    var step = event.shiftKey ? 64 : 16;
+    resize(handle, event.key === "Home" ? MIN_WIDTH : width + (event.key === "ArrowRight" ? step : -step));
+  });
+})();

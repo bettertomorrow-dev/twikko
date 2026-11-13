@@ -37,9 +37,8 @@ schema:
 	if !s.HasErrors() || s.FieldValue(0, doc.Schema.Fields[0]) != "1e-" {
 		t.Fatal("lost invalid draft")
 	}
-	s.SetMode("table")
 	if s.FieldValue(0, doc.Schema.Fields[0]) != "1e-" {
-		t.Fatal("switch lost draft")
+		t.Fatal("lost draft")
 	}
 	s.Edit(0, "n", []string{"9007199254740993.0000000002"}, true)
 	s.Edit(0, "text", []string{""}, true)

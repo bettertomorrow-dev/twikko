@@ -11,7 +11,7 @@ import (
 	"twikko/internal/session"
 )
 
-func TestTableSwitchDraftsResetAndSave(t *testing.T) {
+func TestFixedTableDraftsResetAndSave(t *testing.T) {
 	dir := t.TempDir()
 	v := filepath.Join(dir, "v.yaml")
 	d := filepath.Join(dir, "d.json")
@@ -44,8 +44,10 @@ view:
 	if err != nil {
 		t.Fatal(err)
 	}
-	table := post(t, s, "/mode?value=table", "")
-	for _, want := range []string{"<table", `scope="col"`, `class="sr-only">n`, `value="before"`} {
+	r := httptest.NewRecorder()
+	s.ServeHTTP(r, httptest.NewRequest(http.MethodGet, "/s/"+s.Token()+"/", nil))
+	table := r.Body.String()
+	for _, want := range []string{"<table", `scope="col"`, `sr-only">n`, `value="before"`} {
 		if !strings.Contains(table, want) {
 			t.Fatalf("missing %s: %s", want, table)
 		}
@@ -54,11 +56,17 @@ view:
 	if strings.Contains(edit, `id="field-0-n"`) || strings.Contains(edit, "entity-badges") {
 		t.Fatal("edit replaced control or targeted absent badge")
 	}
-	cards := post(t, s, "/mode?value=cards", "")
-	if !strings.Contains(cards, `value="1e-"`) || !strings.Contains(cards, "must be") {
+	r = httptest.NewRecorder()
+	s.ServeHTTP(r, httptest.NewRequest(http.MethodGet, "/s/"+s.Token()+"/", nil))
+	if !strings.Contains(r.Body.String(), `value="1e-"`) {
 		t.Fatal("lost invalid draft")
 	}
-	r := httptest.NewRecorder()
+	r = httptest.NewRecorder()
+	s.ServeHTTP(r, httptest.NewRequest(http.MethodPost, "/s/"+s.Token()+"/mode?value=cards", nil))
+	if r.Code != http.StatusNotFound {
+		t.Fatal("runtime mode changes must not be available")
+	}
+	r = httptest.NewRecorder()
 	s.ServeHTTP(r, httptest.NewRequest(http.MethodPost, "/s/"+s.Token()+"/save", nil))
 	if r.Code != 422 {
 		t.Fatal("saved invalid draft")
@@ -68,7 +76,6 @@ view:
 	if r.Code != 400 {
 		t.Fatal("changed immutable ID")
 	}
-	post(t, s, "/mode?value=table", "")
 	reset := post(t, s, "/entities/0/reset", "")
 	if !strings.HasPrefix(reset, "<tr") || !strings.Contains(reset, `value="5"`) {
 		t.Fatal("reset did not render restored row")

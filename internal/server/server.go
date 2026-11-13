@@ -93,15 +93,6 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.Method == http.MethodGet && relative == "":
 		s.render(w, ui.Page(ui.NewPageData(s.store, s.token)))
-	case r.Method == http.MethodPost && relative == "mode":
-		s.requireWriteHost(w, r, func(w http.ResponseWriter, r *http.Request) {
-			if err := s.store.SetMode(r.URL.Query().Get("value")); err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-			data := ui.NewPageData(s.store, s.token)
-			s.render(w, ui.Entities(data))
-		})
 	case r.Method == http.MethodPost && relative == "save":
 		s.requireWriteHost(w, r, s.save)
 	case r.Method == http.MethodPost && relative == "cancel":

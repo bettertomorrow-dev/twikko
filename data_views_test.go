@@ -32,7 +32,7 @@ func TestViewCLIExamplesSaveAndCancel(t *testing.T) {
 				defer r.Close()
 				done := make(chan int, 1)
 				go func() {
-					done <- run(ctx, []string{"--view", "examples/tasks.view.yaml", "--data", "examples/tasks." + ext, "--output", out}, w)
+					done <- run(ctx, []string{"--view", "examples/tasks.view.yaml", "--data", "examples/tasks." + ext, "--output", out, "--mode", map[string]string{"save": "cards", "cancel": "table"}[action]}, w)
 					w.Close()
 				}()
 				scan := bufio.NewScanner(r)
@@ -54,6 +54,9 @@ func TestViewCLIExamplesSaveAndCancel(t *testing.T) {
 				}
 				page, _ := io.ReadAll(response.Body)
 				response.Body.Close()
+				if bytes.Contains(page, []byte("<table")) != (action == "cancel") {
+					t.Fatal("launch mode override ignored")
+				}
 				if response.StatusCode != 200 || !bytes.Contains(page, []byte("Example tasks")) {
 					t.Fatalf("page: %s", page)
 				}
@@ -100,6 +103,7 @@ func TestViewCLIRejectsFlagCombinations(t *testing.T) {
 	for _, args := range [][]string{
 		{"--view", "v.yaml"}, {"--data", "d.json"}, {"--input", "i.yaml", "--view", "v.yaml", "--data", "d.json"},
 		{"--view", "v.yaml", "--data", "d.json", "extra"},
+		{"--view", "v.yaml", "--data", "d.json", "--mode", "grid"},
 	} {
 		var out bytes.Buffer
 		args = append(args, "--output", filepath.Join(t.TempDir(), "out.yaml"))
@@ -152,7 +156,8 @@ func TestAcceptanceVolumeLoad(t *testing.T) {
 	t.Logf("load 200x20: %s", time.Since(start))
 	store := session.New(doc)
 	for _, mode := range []string{"cards", "table"} {
-		store.SetMode(mode)
+		doc.View = &schema.View{Mode: mode}
+		store = session.New(doc)
 		start = time.Now()
 		var rendered strings.Builder
 		if err := ui.Page(ui.NewPageData(store, "test-token")).Render(context.Background(), &rendered); err != nil {

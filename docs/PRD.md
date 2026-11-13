@@ -42,7 +42,8 @@ twikko --view tasks.view.yaml --data tasks.csv --output result.yaml --open
 (`.yaml`/`.yml`), JSON, or CSV; unknown formats fail. `--output` is YAML and
 must not alias either input, including detectable symlink or hardlink aliases.
 The server binds to `127.0.0.1`. Existing `--port`, `--open`, `--version`,
-stdout protocol, and exit codes remain supported.
+stdout protocol, and exit codes remain supported. `--mode cards|table` overrides
+`view.mode` at launch. No browser control or endpoint changes it afterward.
 
 The legacy `--input` mode remains a separate compatibility route. It accepts
 the old single YAML document and its `schema.header` / `schema.body` template
@@ -75,9 +76,9 @@ preserved. Unknown fields and nested structures are retained; undeclared CSV
 columns remain strings.
 
 Card and table layouts can each place one editor per field. A field can have
-one control in each layout. Options remain a schema-wide constraint. Switching
-views must preserve edits, including invalid or unfinished drafts. Reset clears
-drafts. Required editable fields must be reachable in at least one layout.
+one control in each layout. Options remain a schema-wide constraint. The launch
+mode stays fixed for the session; --mode overrides view.mode. Reset clears
+drafts. Invalid editable values must be fixable in the selected layout.
 
 ## Labels and accessibility
 
@@ -131,14 +132,18 @@ Save until it is corrected.
   navigation in table view.
 - Use an expanded editor for long text and multienum when an inline cell harms
   table readability.
-- Keep active editors intact across partial updates and view switches.
+- Keep active editors intact across partial updates.
+- Use a native table with thin horizontal and vertical grid lines and cell
+  editors without separate borders or repeated captions.
+- Let users resize columns by dragging header boundaries or using the
+  keyboard. Width changes survive row Reset and are local to the page.
 
 ## Data volume and measurements
 
 The first-version support target is 200 records × 20 fields, at most 2 MiB,
 with at most 20 multienum options. These numbers define a measurable target,
-not a row truncation limit. Measure browser opening and view switching separately from
-server response time. Goals are 2 seconds for opening/switching, p95 server
+not a row truncation limit. Measure browser opening separately from
+server response time. Goals are 2 seconds for opening, p95 server
 response at or below 300 ms, and 2 seconds for Save. No speed result is claimed
 until measured.
 
@@ -171,10 +176,9 @@ transition. Gojira's complete reusable view is
 `skills/gojira/assets/gojira.view.yaml`.
 
 
-## Measured limit
+## Earlier measurements
 
-A headless Chromium 158 run on Linux exercised 200 records with 20 text fields.
-Opening and Save met the 2 second goal; switching from the table back to cards
-was between 2.7 and 3.3 seconds. This remains a performance limitation of replacing the
-complete editor DOM. No records are truncated. Other browsers and a manual
-human review have not been tested.
+The earlier version with a browser view switch took between 2.7 and 3.3 seconds
+to return to 200 cards with 20 text fields in headless Chromium 158 on Linux.
+That switch has been removed. These historical numbers do not measure the
+current fixed-view launch or column resizing.

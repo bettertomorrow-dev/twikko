@@ -21,11 +21,10 @@ func TestLabelVisibilityPrecedenceAndAccessibleHTML(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			fields := []schema.Field{{Name: "title", Label: "Title", Type: schema.Text}, {Name: "due", Label: "Due", Type: schema.Date}, {Name: "flag", Label: "Flag", Type: schema.Bool}}
 			body := &schema.Body{Rows: [][]schema.Widget{{{Type: schema.WidgetControl, Source: "title", ShowLabel: tc.local}, {Type: schema.WidgetDate, Source: "due", ShowLabel: tc.local}, {Type: schema.WidgetToggle, Source: "flag", ShowLabel: tc.local}}}}
-			s := session.New(&schema.Document{Schema: schema.Schema{Fields: fields, Body: body}, View: &schema.View{Mode: "cards", ShowLabels: tc.global}})
+			s := session.New(&schema.Document{Schema: schema.Schema{Fields: fields, Body: body}, View: &schema.View{Mode: "table", ShowLabels: tc.global}})
 			data := NewPageData(s, "token")
 			// Empty data still has semantic table headings.
 			var html strings.Builder
-			s.SetMode("table")
 			data = NewPageData(s, "token")
 			if err := Page(data).Render(context.Background(), &html); err != nil {
 				t.Fatal(err)
@@ -33,7 +32,7 @@ func TestLabelVisibilityPrecedenceAndAccessibleHTML(t *testing.T) {
 			if !strings.Contains(html.String(), `scope="col"`) || !strings.Contains(html.String(), "Title") {
 				t.Fatal("empty table lost headings")
 			}
-			s.SetMode("cards")
+
 			// Use a synthetic record to exercise controls, including a masked picker.
 			doc, err := schema.Parse([]byte("schema:\n  id_field: id\n  fields: [{name: id,type: text},{name: title,type: text},{name: due,type: date},{name: flag,type: bool}]\nentities: [{id: PROJ-101, title: text, due: 2026-11-13, flag: true}]"))
 			if err != nil {

@@ -29,6 +29,11 @@ type Cards struct {
 }
 
 func LoadView(viewPath, dataPath string) (*Document, error) {
+	return LoadViewWithMode(viewPath, dataPath, "")
+}
+
+// LoadViewWithMode applies the launch override before checking editable values.
+func LoadViewWithMode(viewPath, dataPath, mode string) (*Document, error) {
 	b, err := os.ReadFile(viewPath)
 	if err != nil {
 		return nil, err
@@ -142,6 +147,12 @@ func LoadView(viewPath, dataPath string) (*Document, error) {
 	if v.Mode != "cards" && v.Mode != "table" {
 		return nil, fmt.Errorf("view.mode must be cards or table")
 	}
+	if mode != "" {
+		if mode != "cards" && mode != "table" {
+			return nil, fmt.Errorf("mode override must be cards or table")
+		}
+		v.Mode = mode
+	}
 	s.Header = v.Cards.Header
 	s.Body = v.Cards.Body
 	// Validate the layout without the legacy requirement that all required fields be in cards.
@@ -253,21 +264,23 @@ func LoadView(viewPath, dataPath string) (*Document, error) {
 		return nil, fmt.Errorf("%s: %w", dataPath, err)
 	}
 	editable := map[string]bool{}
-	if s.Body == nil {
-		for _, f := range s.Fields {
-			editable[f.Name] = true
+	if v.Mode == "cards" {
+		if s.Body == nil {
+			for _, f := range s.Fields {
+				editable[f.Name] = true
+			}
 		}
-	}
-	for _, w := range s.widgets() {
-		if w.widget.IsControl() {
-			editable[w.widget.Source] = true
-		}
-	}
-	if v.Table.Columns == nil {
-		for _, f := range s.Fields {
-			editable[f.Name] = true
+		for _, w := range s.widgets() {
+			if w.widget.IsControl() {
+				editable[w.widget.Source] = true
+			}
 		}
 	} else {
+		if len(v.Table.Columns) == 0 {
+			for _, f := range s.Fields {
+				editable[f.Name] = true
+			}
+		}
 		for _, w := range v.Table.Columns {
 			if w.IsControl() {
 				editable[w.Source] = true

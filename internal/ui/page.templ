@@ -18,14 +18,13 @@ templ Page(data PageData) {
 			<link rel="stylesheet" href={ templ.SafeURL(data.AssetBase + "styles.css") }/>
 		</head>
 		<body hx-sync="this:queue all">
-			<main class="mx-auto max-w-5xl px-4 py-8 pb-32">
+			<main class={ templ.Classes("mx-auto px-4 py-8 pb-32", templ.KV("max-w-5xl", data.Mode != "table")) }>
 				<header class="mb-6">
 					<h1 class="text-2xl font-semibold tracking-tight">{ data.Title }</h1>
 					if data.Description != "" {
 						<p class="mt-1 whitespace-pre-line text-sm text-muted-foreground">{ data.Description }</p>
 					}
 				</header>
-				@ModeSwitch(data)
 				@Entities(data)
 				<footer class="mt-12 text-center text-xs text-muted-foreground/60 select-none">Twikko, 2026</footer>
 			</main>
@@ -34,21 +33,29 @@ templ Page(data PageData) {
 	</html>
 }
 
-templ ModeSwitch(data PageData) {
-	<div id="mode-switch" class="mb-4 flex gap-2"><button class={ outlineButtonClass } data-mode-button="cards" aria-pressed={ fmt.Sprint(data.Mode == "cards") } hx-post={ templ.SafeURL(fmt.Sprintf("/s/%s/mode?value=cards", data.Token)) } hx-target="#entities" hx-swap="outerHTML settle:0ms">Cards</button><button class={ outlineButtonClass } data-mode-button="table" aria-pressed={ fmt.Sprint(data.Mode == "table") } hx-post={ templ.SafeURL(fmt.Sprintf("/s/%s/mode?value=table", data.Token)) } hx-target="#entities" hx-swap="outerHTML settle:0ms">Table</button></div>
-}
-
 templ Entities(data PageData) {
 	<div id="entities" data-view-mode={ data.Mode } class="space-y-5">
 		if data.Mode == "table" && len(data.Columns) > 0 {
 			<div class="max-h-[70vh] overflow-auto">
-				<table class="w-full text-left">
+				<table id="data-table" class="data-table table-fixed border-collapse text-left" style={ templ.SafeCSS(fmt.Sprintf("width:%dpx", len(data.Columns)*200+96)) }>
+					<colgroup>
+						for range data.Columns {
+							<col style="width:200px"/>
+						}
+						<col style="width:96px"/>
+					</colgroup>
 					<thead>
 						<tr>
-							for _, column := range data.Columns {
-								<th scope="col" class="sticky top-0 bg-background p-2"><span class={ templ.KV("sr-only", !column.ShowLabel) }>{ columnHeading(column) }</span></th>
+							for index, column := range data.Columns {
+								<th scope="col" class="sticky top-0 z-10 border border-border bg-background px-3 py-2 text-sm font-medium">
+									<span class={ templ.Classes("block truncate", templ.KV("sr-only", !column.ShowLabel)) }>{ columnHeading(column) }</span>
+									<button type="button" role="separator" aria-orientation="vertical" aria-label={ "Resize " + columnHeading(column) } aria-controls="data-table" aria-valuemin="96" aria-valuenow="200" data-column-resize={ fmt.Sprint(index) } class="absolute inset-y-0 right-0 w-2 cursor-col-resize touch-none select-none hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"></button>
+								</th>
 							}
-							<th scope="col" class="sticky top-0 bg-background p-2">Actions</th>
+							<th scope="col" class="sticky top-0 z-10 border border-border bg-background px-3 py-2 text-sm font-medium">
+								Actions
+								<button type="button" role="separator" aria-orientation="vertical" aria-label="Resize Actions" aria-controls="data-table" aria-valuemin="96" aria-valuenow="96" data-column-resize={ fmt.Sprint(len(data.Columns)) } class="absolute inset-y-0 right-0 w-2 cursor-col-resize touch-none select-none hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"></button>
+							</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -69,7 +76,7 @@ templ Entities(data PageData) {
 templ TableRow(data PageData, entity EntityView) {
 	<tr id={ fmt.Sprintf("entity-%d", entity.Index) }>
 		for _, widget := range entity.Cells {
-			<td class="border-b p-2 align-top">
+			<td class="border border-border p-0 align-top">
 				if widget.Type == schema.WidgetTextarea || widget.Type == schema.WidgetMultiSelect {
 					<details open?={ widget.Field.Error!="" }>
 						@CellSummary(entity.Index, *widget.Field, false)
@@ -80,7 +87,7 @@ templ TableRow(data PageData, entity EntityView) {
 				}
 			</td>
 		}
-		<td class="border-b p-2"><button hx-post={ templ.SafeURL(fmt.Sprintf("/s/%s/entities/%d/reset", data.Token, entity.Index)) } hx-target={ fmt.Sprintf("#entity-%d", entity.Index) } hx-swap="outerHTML settle:0ms">Reset</button></td>
+		<td class="border border-border p-2 align-top text-sm"><button hx-post={ templ.SafeURL(fmt.Sprintf("/s/%s/entities/%d/reset", data.Token, entity.Index)) } hx-target={ fmt.Sprintf("#entity-%d", entity.Index) } hx-swap="outerHTML settle:0ms">Reset</button></td>
 	</tr>
 }
 
@@ -477,5 +484,5 @@ templ DonePage(saved bool) {
 }
 
 templ CellSummary(index int, field FieldView, oob bool) {
-	<summary id={ fmt.Sprintf("summary-%d-%s", index, domKey(field.Field.Name)) } { oobAttrs(oob)... } class="cursor-pointer max-w-64 truncate">{ editorSummary(field) }</summary>
+	<summary id={ fmt.Sprintf("summary-%d-%s", index, domKey(field.Field.Name)) } { oobAttrs(oob)... } class="cursor-pointer max-w-full truncate px-2 py-2 text-sm">{ editorSummary(field) }</summary>
 }

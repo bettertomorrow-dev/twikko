@@ -71,7 +71,9 @@ view:
       - [{ source: title }]
 ```
 
-The mode defaults to `cards`. Both layouts are optional. A table without
+The mode defaults to `cards` and is fixed for the session. `--mode table` or
+`--mode cards` overrides `view.mode` at launch. There is no browser view switch.
+Both layouts are optional. A table without
 `columns` uses schema field order; cards without a layout use the standard
 header and body grid. Unknown keys and unsupported versions are errors. The
 legacy format keeps its old `schema.header` and `schema.body` widget syntax,
@@ -150,7 +152,7 @@ templates and static assets are embedded in the binary.
 
 The first-version support target is 200 records × 20 fields, up to 2 MiB and
 20 multienum options. It is measurable, not a truncation limit. Opening and
-switching views (2 s), server p95 response (300 ms), and Save (2 s) are
+opening either view (2 s), server p95 response (300 ms), and Save (2 s) are
 measurement goals. These timings have not yet been measured.
 
 See [docs/PRD.md](docs/PRD.md) for product requirements.
@@ -159,5 +161,13 @@ See [docs/PRD.md](docs/PRD.md) for product requirements.
 The optional browser regression check in `scripts/test-data-views.cjs` needs
 an externally installed Playwright package and its Chromium browser. After
 `make build`, run `NODE_PATH=/path/to/node_modules node scripts/test-data-views.cjs`.
-This checks immediate Save and view switching with queued edits, invalid drafts,
-focus, Reset, nullable values, labels, and read-only controls.
+This checks both launch modes, immediate Save with queued edits, invalid drafts,
+focus, Reset, nullable values, labels, read-only controls, table grid lines,
+borderless cell editors, and pointer/keyboard column resizing.
+
+
+In table mode, drag the right edge of a column heading to resize that column.
+A focused resize handle also accepts Left/Right, Shift for larger steps, and
+Home for the minimum width. Widths stay in the current page and survive row
+Reset; reloading restores the defaults. Table cells provide the grid borders,
+so their editors have no separate borders or repeated visible captions.

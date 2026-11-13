@@ -94,3 +94,8 @@ The older `twikko --input <path> --output <path>` mode remains supported for
 single-file YAML. Its old `schema.header` and `schema.body` settings, including
 built-in template references, remain available there. Do not mix `--input`
 with `--view` or `--data`. New sessions should use the two-file contract.
+
+
+The view is fixed for a session. Set `view.mode` in the YAML or pass
+`--mode cards` / `--mode table` at launch. There is no browser view switch.
+Any invalid editable value must be reachable in that selected layout.

@@ -35,6 +35,7 @@ func run(ctx context.Context, args []string, stdout io.Writer) int {
 	input := flags.String("input", "", "legacy input YAML file")
 	view := flags.String("view", "", "view YAML file")
 	data := flags.String("data", "", "YAML, JSON or CSV data file")
+	mode := flags.String("mode", "", "cards or table; overrides view.mode")
 	output := flags.String("output", "", "output YAML file")
 	port := flags.Int("port", 0, "localhost port")
 	showVersion := flags.Bool("version", false, "print version and exit")
@@ -46,6 +47,10 @@ func run(ctx context.Context, args []string, stdout io.Writer) int {
 	if *showVersion {
 		fmt.Fprintln(stdout, "twikko "+version)
 		return 0
+	}
+	if *mode != "" && *mode != "cards" && *mode != "table" {
+		fmt.Fprintln(stdout, "twikko: error=--mode must be cards or table")
+		return 1
 	}
 	legacy := *input != ""
 	if *output == "" || *port < 0 || *port > 65535 || flags.NArg() != 0 || (legacy && (*view != "" || *data != "")) || (!legacy && (*view == "" || *data == "")) {
@@ -67,11 +72,14 @@ func run(ctx context.Context, args []string, stdout io.Writer) int {
 	if legacy {
 		document, err = schema.Load(*input)
 	} else {
-		document, err = schema.LoadView(*view, *data)
+		document, err = schema.LoadViewWithMode(*view, *data, *mode)
 	}
 	if err != nil {
 		fmt.Fprintln(stdout, "twikko: error="+err.Error())
 		return 1
+	}
+	if legacy && *mode != "" {
+		document.View = &schema.View{Mode: *mode}
 	}
 	absoluteOutput, err := filepath.Abs(*output)
 	if err != nil {

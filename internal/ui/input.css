@@ -136,3 +136,45 @@
     mask: var(--icon) center / contain no-repeat;
   }
 }
+
+/* Table cells provide the borders; editors fill a cell without card chrome. */
+.data-table [data-field-control],
+.data-table [role="group"],
+.data-table [id^="widget-"] {
+  border: 0;
+  padding: 0;
+  min-width: 0;
+}
+.data-table [data-field-control] > label[for] {
+  @apply sr-only;
+}
+.data-table input:not([type="checkbox"]),
+.data-table select,
+.data-table textarea {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  width: 100%;
+  min-width: 0;
+  background: transparent;
+}
+.data-table input:not([type="checkbox"]):focus-visible,
+.data-table select:focus-visible,
+.data-table textarea:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+.data-table [data-picker-input] { padding-left: 2.25rem; }
+.data-table textarea { min-height: 6rem; }
+.data-table [role="group"] { padding: 0.5rem; }
+.data-table [id^="widget-"]:not(:empty) { padding: 0.5rem; }
+.data-table [data-field-status] {
+  min-height: 0;
+  margin: 0;
+  padding: 0.125rem 0.5rem;
+}
+.data-table [data-field-status]:empty { display: none; }
+.data-table [data-field-control]:has([data-changed="true"]) {
+  background: color-mix(in oklch, var(--changed) 8%, transparent);
+}
+.data-table [data-field-control] > label:not([for]) { padding: 0.5rem 0.75rem; }

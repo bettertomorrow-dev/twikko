@@ -327,7 +327,7 @@ func NewPageData(store *session.Store, token string) PageData {
 			view.Cells = resolveWidgets(columns, entity, byName, func(i int) string { return fmt.Sprintf("widget-%d-t-%d", index, i) }, bodyTextWidgetClass, globalLabels, false)
 			for i := range view.Cells {
 				w := &view.Cells[i]
-				w.ShowLabel = showWidgetLabel(globalLabels, columns[i].ShowLabel, true)
+				w.ShowLabel = false
 				if w.Label == "" {
 					if w.Field != nil {
 						w.Label = w.Field.Field.Label
