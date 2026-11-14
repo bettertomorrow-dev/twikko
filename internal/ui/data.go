@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -289,13 +290,7 @@ func NewPageData(store *session.Store, token string) PageData {
 				}
 			}
 		}
-		sortable := false
-		for _, field := range s.Fields {
-			if field.Name == w.Source {
-				sortable = true
-				break
-			}
-		}
+		sortable := slices.ContainsFunc(s.Fields, func(f schema.Field) bool { return f.Name == w.Source })
 		data.Columns = append(data.Columns, WidgetView{Label: label, ShowLabel: showWidgetLabel(globalLabels, w.ShowLabel, true), Sortable: sortable})
 	}
 	inHeader := headerControls(s)

@@ -2,6 +2,7 @@ package session
 
 import (
 	"math/big"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -205,13 +206,7 @@ func compareConditionSet(value []string, c schema.Condition) bool {
 		return false
 	}
 	for _, option := range expected {
-		found := false
-		for _, item := range value {
-			if item == option {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(value, option)
 		if c.Op == "contains_any" && found {
 			return true
 		}
