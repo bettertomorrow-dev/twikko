@@ -213,3 +213,5 @@ session and survives a page reload. New edits after undo discard the redo branch
 
 Drag the floating action button to snap it to any screen corner with the same
 inset. With the button focused, Alt + arrow keys also choose a corner.
+
+For managed development sessions with `rdr`, see [the runner setup](docs/RUNDEV.md).
