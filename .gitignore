@@ -21,3 +21,6 @@ coverage.*
 
 # GoReleaser output
 /dist/
+
+# Local rundevrun session results
+/.rdr-output/

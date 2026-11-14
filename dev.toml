@@ -1,0 +1,16 @@
+version = 1
+
+[project]
+name = "twikko"
+
+[services.cards]
+build = "make generate && go build -o {run_dir}/twikko ."
+command = "sh scripts/rdr-run.sh {run_dir}/twikko {port} cards"
+port = "auto"
+health = { tcp = true }
+
+[services.table]
+build = "make generate && go build -o {run_dir}/twikko ."
+command = "sh scripts/rdr-run.sh {run_dir}/twikko {port} table"
+port = "auto"
+health = { tcp = true }
