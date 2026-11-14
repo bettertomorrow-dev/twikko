@@ -487,10 +487,10 @@ document.addEventListener("htmx:afterSettle", function (event) {
 
 function transitionRoot(element, target) {
   var path = element.getAttribute("hx-post") || "";
-  if (!/\/(save$|cancel$|reset$|collapsed$)/.test(path)) return null;
+  if (!/\/(save$|cancel$|reset$|collapsed$|undo$|redo$)/.test(path)) return null;
   var selector = element.getAttribute("hx-target");
   var root = target || (selector && document.querySelector(selector));
-  return !root || root === document.body ? document.getElementById("entities") : root;
+  return !root || root === document.body || root.id === "history-result" ? document.getElementById("entities") : root;
 }
 
 function lockTransition(root) {
@@ -499,9 +499,40 @@ function lockTransition(root) {
   root.setAttribute("aria-busy", "true");
 }
 
+var pendingEdits = 0;
+document.addEventListener("htmx:configRequest", function (event) {
+  if ((event.detail.elt.getAttribute("hx-post") || "").includes("/fields/")) pendingEdits++;
+});
+document.addEventListener("htmx:afterRequest", function (event) {
+  if ((event.detail.elt.getAttribute("hx-post") || "").includes("/fields/")) pendingEdits = Math.max(0, pendingEdits - 1);
+});
+
 // Lock as soon as an action is queued: later input must not be detached by it.
 document.addEventListener("htmx:confirm", function (event) {
-  lockTransition(transitionRoot(event.detail.elt));
+  var elt = event.detail.elt;
+  if (elt.hasAttribute("data-confirm-reset") && !event.detail.etc.twikkoConfirmed) {
+    // All earlier edit requests share the body queue with this action.
+    // Invalid drafts count too, even when no valid value changed.
+    var status = document.getElementById("save-status");
+    var entity = elt.closest('[id^="entity-"]');
+    var changed = entity ? entity.querySelector('[data-changed="true"], [data-invalid="true"], [data-has-changes="true"]') : status && status.dataset.hasChanges === "true";
+    if (changed || pendingEdits > 0) {
+      event.preventDefault();
+      var dialog = document.getElementById("reset-confirmation");
+      dialog.returnValue = "";
+      dialog.onclose = function () {
+        if (dialog.returnValue === "confirm") {
+          event.detail.etc.twikkoConfirmed = true;
+          lockTransition(transitionRoot(elt));
+          event.detail.issueRequest(true);
+        }
+      };
+      dialog.showModal();
+      return;
+    }
+    event.detail.etc.twikkoConfirmed = true;
+  }
+  lockTransition(transitionRoot(elt));
 });
 document.addEventListener("htmx:beforeRequest", function (event) {
   var root = transitionRoot(event.detail.elt, event.detail.target);
@@ -557,5 +588,135 @@ document.addEventListener("htmx:afterRequest", function (event) {
     var width = Number(handle.getAttribute("aria-valuenow"));
     var step = event.shiftKey ? 64 : 16;
     resize(handle, event.key === "Home" ? MIN_WIDTH : width + (event.key === "ArrowRight" ? step : -step));
+  });
+})();
+
+// One interaction with a field is one history step. Only this grouping token
+// lives in the browser; values and undo/redo entries live in the Go session.
+(function () {
+  var group = crypto.randomUUID();
+  var activeField = null;
+  var restoreFocus = null;
+  var openEditors = [];
+  document.addEventListener("focusin", function (event) {
+    var field = event.target.closest("[data-field-control]");
+    if (field !== activeField) {
+      group = crypto.randomUUID();
+      activeField = field;
+    }
+  });
+  document.addEventListener("htmx:confirm", function (event) {
+    var elt = event.detail.elt;
+    if ((elt.getAttribute("hx-post") || "").includes("/fields/")) {
+      // Capture before queuing. HTMX replays queued requests after focus may
+      // have moved, and invokes confirm again with the same options object.
+      var options = event.detail.etc;
+      if (!options.values) options.values = {};
+      if (!options.values.history_group) options.values.history_group = group;
+    }
+  });
+  document.addEventListener("keydown", function (event) {
+    if (!(event.metaKey || event.ctrlKey) || event.altKey || event.key.toLowerCase() !== "z" || event.isComposing) return;
+    var button = document.getElementById(event.shiftKey ? "history-redo" : "history-undo");
+    if (!button || document.querySelector("dialog[open]")) return;
+    event.preventDefault();
+    if (document.getElementById("entities").inert) return;
+    openEditors = Array.from(document.querySelectorAll('#data-table details[open]')).map(function (details) {
+      return details.querySelector('summary').id;
+    });
+    var focused = document.activeElement;
+    restoreFocus = focused && focused.id ? { id: focused.id, start: focused.selectionStart, end: focused.selectionEnd } : null;
+    group = crypto.randomUUID();
+    button.click();
+  });
+  document.addEventListener("htmx:afterSettle", function (event) {
+    if (event.detail.target.id !== "history-result") return;
+    openEditors.forEach(function (id) {
+      var summary = document.getElementById(id);
+      if (summary) summary.closest('details').open = true;
+    });
+    openEditors = [];
+    var saved = restoreFocus;
+    restoreFocus = null;
+    if (!saved) return;
+    // afterRequest releases inert after the swap has settled.
+    setTimeout(function () {
+      var input = document.getElementById(saved.id);
+      if (!input) return;
+      input.focus({ preventScroll: true });
+      if (saved.start != null && input.setSelectionRange) {
+        try { input.setSelectionRange(saved.start, saved.end); } catch (_) { /* number inputs have no text selection */ }
+      }
+    }, 0);
+  });
+})();
+
+// Drag the action button to the nearest viewport corner. A short click still
+// opens its menu; pointer capture keeps mouse, pen and touch drags together.
+(function () {
+  var drag = null;
+  var suppressClick = false;
+
+  document.addEventListener("pointerdown", function (event) {
+    var handle = event.target.closest("[data-action-drag]");
+    if (!handle || event.button !== 0 || !event.isPrimary) return;
+    var bar = handle.closest("#save-bar");
+    var box = bar.getBoundingClientRect();
+    suppressClick = false;
+    drag = { handle: handle, bar: bar, pointer: event.pointerId,
+      x: event.clientX, y: event.clientY, left: box.left, top: box.top, moved: false };
+    handle.setPointerCapture(event.pointerId);
+  });
+
+  document.addEventListener("pointermove", function (event) {
+    if (!drag || drag.pointer !== event.pointerId) return;
+    var dx = event.clientX - drag.x, dy = event.clientY - drag.y;
+    if (!drag.moved && Math.hypot(dx, dy) < 6) return;
+    drag.moved = true;
+    drag.handle.closest("details").open = false;
+    drag.bar.setAttribute("data-dragging", "");
+    drag.bar.style.right = "auto";
+    drag.bar.style.bottom = "auto";
+    drag.bar.style.left = Math.max(0, Math.min(window.innerWidth - drag.bar.offsetWidth, drag.left + dx)) + "px";
+    drag.bar.style.top = Math.max(0, Math.min(window.innerHeight - drag.bar.offsetHeight, drag.top + dy)) + "px";
+  });
+
+  function finish(event) {
+    if (!drag || drag.pointer !== event.pointerId) return;
+    var state = drag;
+    drag = null;
+    if (state.moved) {
+      var box = state.bar.getBoundingClientRect();
+      if (event.type !== "pointercancel") {
+        state.bar.dataset.corner = (box.top + box.height / 2 < window.innerHeight / 2 ? "top" : "bottom") +
+          "-" + (box.left + box.width / 2 < window.innerWidth / 2 ? "left" : "right");
+      }
+      state.bar.removeAttribute("style");
+      state.bar.removeAttribute("data-dragging");
+      suppressClick = true;
+    }
+    if (state.handle.hasPointerCapture(event.pointerId)) state.handle.releasePointerCapture(event.pointerId);
+  }
+  document.addEventListener("pointerup", finish);
+  document.addEventListener("pointercancel", finish);
+  document.addEventListener("lostpointercapture", finish);
+  document.addEventListener("click", function (event) {
+    if (!suppressClick || !event.target.closest("[data-action-drag]")) return;
+    suppressClick = false;
+    if (event.detail === 0) return; // Keyboard activation remains available.
+    event.preventDefault();
+    event.stopPropagation();
+  }, true);
+  document.addEventListener("keydown", function (event) {
+    var handle = event.target.closest("[data-action-drag]");
+    if (!handle || !event.altKey || !["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) return;
+    event.preventDefault();
+    var bar = handle.closest("#save-bar");
+    var corner = bar.dataset.corner.split("-");
+    if (event.key === "ArrowUp") corner[0] = "top";
+    if (event.key === "ArrowDown") corner[0] = "bottom";
+    if (event.key === "ArrowLeft") corner[1] = "left";
+    if (event.key === "ArrowRight") corner[1] = "right";
+    bar.dataset.corner = corner.join("-");
   });
 })();

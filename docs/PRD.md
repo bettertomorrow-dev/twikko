@@ -124,7 +124,16 @@ Save until it is corrected.
 
 ## UI
 
-- Keep Save and Cancel visible while scrolling.
+- Keep a floating change-count dropdown visible while scrolling in both views.
+  It contains Save, Reset all, and Cancel. Reset asks for confirmation when
+  there are changes or invalid drafts. Confirmation dialog text and button
+  labels are configurable component parameters.
+- Keep undo/redo history in the CLI session until Save or Cancel. Cmd/Ctrl+Z
+  undoes and Cmd/Ctrl+Shift+Z redoes. Updates to one field during an uninterrupted
+  interaction form one step, including invalid drafts. Returning to a field
+  starts another step. A new edit after undo discards redo history. A reset of
+  one record or all records is one undoable action. Reloading retains history;
+  card collapse and table column resizing do not enter data history.
 - Show field errors and changed markers next to their controls.
 - Validate on the server, including read-only enforcement.
 - Reuse field controls and session state across cards and table.

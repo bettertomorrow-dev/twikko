@@ -178,3 +178,15 @@
   background: color-mix(in oklch, var(--changed) 8%, transparent);
 }
 .data-table [data-field-control] > label:not([for]) { padding: 0.5rem 0.75rem; }
+
+/* Keep the same inset in every corner, including after viewport resizing. */
+#save-bar { --action-inset: 1.25rem; }
+#save-bar[data-corner^="top"] { top: var(--action-inset); }
+#save-bar[data-corner^="bottom"] { bottom: var(--action-inset); }
+#save-bar[data-corner$="left"] { left: var(--action-inset); }
+#save-bar[data-corner$="right"] { right: var(--action-inset); }
+#save-bar[data-corner^="top"] [data-action-menu] { top: 100%; margin-top: 0.5rem; }
+#save-bar[data-corner^="bottom"] [data-action-menu] { bottom: 100%; margin-bottom: 0.5rem; }
+#save-bar[data-corner$="left"] [data-action-menu] { left: 0; }
+#save-bar[data-corner$="right"] [data-action-menu] { right: 0; }
+#save-bar[data-dragging] [data-action-drag] { cursor: grabbing; }

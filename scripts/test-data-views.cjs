@@ -59,6 +59,33 @@ view:
       assert.equal(await page.locator('#mode-switch,[data-mode-button]').count(), 0);
       assert.equal(await page.locator('table').count(), mode === 'table' ? 1 : 0);
       assert.equal(await page.locator('#field-0-id').isDisabled(), true);
+      const actionBar = page.locator('#save-bar');
+      for (const [corner, x, y] of [['top-left', 30, 30], ['top-right', 1400, 30], ['bottom-left', 30, 870], ['bottom-right', 1400, 870]]) {
+        const box = await page.locator('[data-action-drag]').boundingBox();
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(x, y, { steps: 8 });
+        await page.mouse.up();
+        assert.equal(await actionBar.getAttribute('data-corner'), corner);
+        assert.equal(await actionBar.locator('details').getAttribute('open'), null);
+        const snapped = await actionBar.boundingBox();
+        assert.ok(Math.abs((corner.endsWith('left') ? snapped.x : 1440 - snapped.x - snapped.width) - 20) < 1);
+        assert.ok(Math.abs((corner.startsWith('top') ? snapped.y : 900 - snapped.y - snapped.height) - 20) < 1);
+        await actionBar.locator('summary').click();
+        const menu = await page.locator('[data-action-menu]').boundingBox();
+        assert.ok(menu.x >= 0 && menu.y >= 0 && menu.x + menu.width <= 1440 && menu.y + menu.height <= 900);
+        await actionBar.locator('summary').click();
+      }
+      await actionBar.locator('summary').focus();
+      await page.keyboard.press('Alt+ArrowUp');
+      assert.equal(await actionBar.getAttribute('data-corner'), 'top-right');
+      await page.keyboard.press('Alt+ArrowDown');
+
+      await page.locator('#save-bar summary').click();
+      await page.locator('#save-bar button[data-confirm-reset]').click();
+      await page.waitForFunction(() => !document.querySelector('[inert]'));
+      assert.equal(await page.locator('#reset-confirmation').isVisible(), false);
+      await page.locator('#save-bar summary').click();
       assert.equal(await page.getByRole('switch', { name: 'enabled', exact: true }).count(), 1);
       let resizedWidth;
       if (mode === 'table') {
@@ -90,30 +117,63 @@ view:
       await page.locator('#field-0-title').fill('Focus check');
       await page.waitForFunction(() => document.querySelector('#save-status').textContent.includes('1 changed'));
       assert.equal(await page.evaluate(() => window.originalEditor === document.activeElement), true);
+      const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+      await page.keyboard.press(`${modifier}+z`);
+      await page.waitForFunction(() => document.querySelector('#field-0-title').value === 'Before' && !document.querySelector('[inert]'));
+      await page.keyboard.press(`${modifier}+Shift+z`);
+      await page.waitForFunction(() => document.querySelector('#field-0-title').value === 'Focus check' && !document.querySelector('[inert]'));
+      await page.waitForFunction(() => document.activeElement.id === 'field-0-title');
+      await page.locator('#field-0-title').press('End');
+      await page.locator('#field-0-title').pressSequentially(' typed');
+      await page.locator('#save-bar summary').click();
+      await page.getByRole('button', { name: 'Reset', exact: true }).last().click();
+      await page.locator('#reset-confirmation button[value=cancel]').click();
+      assert.equal(await page.locator('#field-0-title').inputValue(), 'Focus check typed');
+      await page.locator('#save-bar summary').click();
+      await page.getByRole('button', { name: 'Reset', exact: true }).last().click();
+      await page.locator('#reset-confirmation button[value=confirm]').click();
+      await page.waitForFunction(() => document.querySelector('#field-0-title').value === 'Before' && !document.querySelector('[inert]'));
+      await page.keyboard.press(`${modifier}+z`);
+      await page.waitForFunction(() => document.querySelector('#field-0-title').value === 'Focus check typed' && !document.querySelector('[inert]'));
+      await page.keyboard.press(`${modifier}+z`);
+      await page.waitForFunction(() => document.querySelector('#field-0-title').value === 'Focus check' && !document.querySelector('[inert]'));
+      if (mode === 'table') assert.equal(await page.locator('col').nth(1).evaluate(el => el.style.width), resizedWidth);
+      await page.reload();
+      await page.keyboard.press(`${modifier}+z`);
+      await page.waitForFunction(() => document.querySelector('#field-0-title').value === 'Before' && !document.querySelector('[inert]'));
+      if (mode === 'table') resizedWidth = '200px';
       await page.locator('#field-0-n').fill('1e-');
       await page.waitForFunction(() => document.querySelector('#status-0-n').textContent.includes('number'));
       assert.equal(await page.locator('#field-0-n').inputValue(), '1e-');
       await page.locator('#field-0-due').fill('2026-');
       await page.waitForFunction(() => document.querySelector('#status-0-due').textContent.includes('date'));
-      if (mode === 'cards') await page.locator('details[data-menu] summary').click();
+      if (mode === 'cards') await page.locator('#entity-0 details[data-menu] summary').click();
       await page.getByRole(mode === 'cards' ? 'menuitem' : 'button', { name: 'Reset', exact: true }).click();
+      await page.locator('#reset-confirmation button[value=confirm]').click();
       await page.waitForFunction(() => document.querySelector('#field-0-n').value === '5' && !document.querySelector('.htmx-request,[inert]'));
       if (mode === 'table') {
         assert.equal(await page.locator('col').nth(1).evaluate(el => el.style.width), resizedWidth);
         await page.locator('td details').filter({ has: page.locator('#group-0-tags') }).locator('summary').click();
         assert.equal(await page.locator('#group-0-tags').evaluate(el => getComputedStyle(el).borderTopWidth), '0px');
       }
+      if (mode === 'table') await page.locator('td details').filter({ has: page.locator('#field-0-notes') }).locator('summary').click();
+      await page.locator('#field-0-notes').fill('Longer note');
+      await page.keyboard.press(`${modifier}+z`);
+      await page.waitForFunction(() => document.querySelector('#field-0-notes').value === 'Text' && document.activeElement.id === 'field-0-notes');
+      await page.keyboard.press(`${modifier}+Shift+z`);
+      await page.waitForFunction(() => document.querySelector('#field-0-notes').value === 'Longer note' && document.activeElement.id === 'field-0-notes');
       await page.locator('#group-0-tags input[value="a"]').uncheck();
       await page.locator('#field-0-flag').selectOption('');
       await page.getByRole('textbox', { name: 'odd / name', exact: true }).fill('escaped');
       await page.locator('#field-0-title').fill('Saved immediately');
+      await page.locator('#save-bar summary').click();
       await page.getByRole('button', { name: 'Save', exact: true }).click();
       await page.getByRole('heading', { name: 'Saved', exact: true }).waitFor();
       const result = fs.readFileSync(output, 'utf8');
       for (const pattern of [/title: Saved immediately/, /flag: null/, /tags: \[\]/, /nested: 5/, /odd \/ name: escaped/]) assert.match(result, pattern);
       assert.deepEqual(errors, []);
       await page.close();
-      console.log(`PASS ${mode}: fixed launch mode, edits, focus, drafts, Reset, Save${mode === 'table' ? ', grid, borderless cells and column resizing' : ''}`);
+      console.log(`PASS ${mode}: fixed launch mode, edits, focus, drafts, Reset, Save, undo/redo, confirmation, history after reload${mode === 'table' ? ', grid, borderless cells and column resizing' : ''}`);
     }
     // A required single-option enum must remain fixable with native keys.
     fs.writeFileSync(view, `version: 1
@@ -123,7 +183,8 @@ schema:
     fs.writeFileSync(data, JSON.stringify([{status:'invalid-original'}]));
     const {page,output,errors}=await open('cards');
     await page.locator('#field-0-status').focus();
-    await page.keyboard.press('ArrowDown'); await page.keyboard.press('Enter');
+    await page.keyboard.press('t'); await page.keyboard.press('Tab');
+    await page.locator('#save-bar summary').click();
     await page.getByRole('button',{name:'Save',exact:true}).click();
     await page.getByRole('heading',{name:'Saved',exact:true}).waitFor();
     assert.match(fs.readFileSync(output,'utf8'),/status: todo/);

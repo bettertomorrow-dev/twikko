@@ -32,6 +32,8 @@ type Store struct {
 	current   []*yaml.Node
 	errors    map[int]map[string]string
 	collapsed map[int]bool
+	history   []historyEntry
+	cursor    int
 }
 
 func New(doc *schema.Document) *Store {
@@ -102,6 +104,11 @@ func (s *Store) FieldValue(index int, field schema.Field) any {
 }
 
 func (s *Store) Edit(index int, name string, values []string, present bool) error {
+	return s.EditGrouped(index, name, values, present, "")
+}
+
+// EditGrouped coalesces updates from one uninterrupted field interaction.
+func (s *Store) EditGrouped(index int, name string, values []string, present bool, group string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	field, ok := s.field(name)
@@ -117,6 +124,8 @@ func (s *Store) Edit(index int, name string, values []string, present bool) erro
 	if !present {
 		return nil
 	}
+	before := s.fieldState(index, name)
+	defer func() { s.record([]fieldChange{{index, name, before, s.fieldState(index, name)}}, group) }()
 	if s.drafts[index] == nil {
 		s.drafts[index] = make(map[string][]string)
 	}
@@ -142,10 +151,7 @@ func (s *Store) Reset(index int) error {
 	if index < 0 || index >= len(s.current) {
 		return errors.New("entity not found")
 	}
-	s.current[index] = schema.Clone(s.original[index])
-	delete(s.errors, index)
-	delete(s.drafts, index)
-	s.validateEntity(index)
+	s.reset([]int{index})
 	return nil
 }
 

@@ -188,3 +188,13 @@ A focused resize handle also accepts Left/Right, Shift for larger steps, and
 Home for the minimum width. Widths stay in the current page and survive row
 Reset; reloading restores the defaults. Table cells provide the grid borders,
 so their editors have no separate borders or repeated visible captions.
+
+
+The floating change counter opens Save, Reset, and Cancel in both views. Reset
+asks for confirmation when there are edits. Press Cmd/Ctrl+Z to undo and
+Cmd/Ctrl+Shift+Z to redo. Typing in one field forms one step until you leave it.
+Reset is undoable too. History, including invalid drafts, lives in the CLI
+session and survives a page reload. New edits after undo discard the redo branch.
+
+Drag the floating action button to snap it to any screen corner with the same
+inset. With the button focused, Alt + arrow keys also choose a corner.
