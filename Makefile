@@ -54,4 +54,4 @@ run:
 	go run . --view examples/tasks.view.yaml --data examples/tasks.csv --output /tmp/twikko-out.yaml --open
 
 run-table:
-	go run . --view examples/tasks.view.yaml --data examples/tasks.csv --mode table --output /tmp/twikko-table-out.yaml --open
+	go run . --view examples/orders.view.yaml --data examples/orders.csv --mode table --output /tmp/twikko-table-out.yaml --open
