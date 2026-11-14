@@ -137,8 +137,8 @@ bin/twikko --view examples/orders.view.yaml --data examples/orders.csv \
 The example includes payment status and type, purchase and delivery prices,
 UTC timestamps, account IDs, and regions. All amounts are in USD. Only 5% of
 orders have a discount, expressed as a fixed amount. Accounts appear one to seven
-times, scattered throughout the table. Edit cells, resize columns
-by dragging their heading edges, and select Save to write the complete records
+times, scattered throughout the table. Edit cells, sort rows, arrange or resize
+columns, and select Save to write the complete records
 and field changes to `/tmp/twikko-table-out.yaml`.
 
 ### Other examples
@@ -170,8 +170,8 @@ templates and static assets are embedded in the binary.
 | `make run-table` | Open the 500-order CSV example in a table and write `/tmp/twikko-table-out.yaml`. |
 
 The first-version support target is 200 records × 20 fields, up to 2 MiB and
-20 multienum options. It is measurable, not a truncation limit. Opening and
-opening either view (2 s), server p95 response (300 ms), and Save (2 s) are
+20 multienum options. It is measurable, not a truncation limit. Opening
+either view (2 s), server p95 response (300 ms), and Save (2 s) are
 measurement goals. These timings have not yet been measured.
 
 See [docs/PRD.md](docs/PRD.md) for product requirements.
@@ -182,11 +182,24 @@ an externally installed Playwright package and its Chromium browser. After
 `make build`, run `NODE_PATH=/path/to/node_modules node scripts/test-data-views.cjs`.
 This checks both launch modes, immediate Save with queued edits, invalid drafts,
 focus, Reset, nullable values, labels, read-only controls, table grid lines,
-borderless cell editors, and pointer/keyboard column resizing.
+borderless cell editors, sorting, column resizing and movement, hover states,
+conditional row highlights, and the 500-order example.
 
 
 In table mode, drag the right edge of a column heading to resize that column.
 A focused resize handle also accepts Left/Right, Shift for larger steps, and
-Home for the minimum width. Widths stay in the current page and survive row
+Home for the minimum width. Double-click the boundary, or press Enter on its
+handle, to fit the column to its contents. Widths stay in the current page and survive row
 Reset; reloading restores the defaults. Table cells provide the grid borders,
 so their editors have no separate borders or repeated visible captions.
+
+Click a column's sort button to alternate ascending and descending order. The
+first column contains permanent row numbers from the input file; sort it
+ascending to restore file order. Drag a column's move handle to arrange data
+columns. Row numbers and actions stay at the edges. Sorting and column movement
+do not change record identity or the order written to the result file.
+
+Hover a cell to strengthen its border, or hold Shift to tint its row and column.
+Views can also set `view.table.row_highlights` rules for conditional row
+backgrounds. See [table interactions and conditions](docs/table-interactions.md)
+for keyboard controls, supported operators, and YAML examples.

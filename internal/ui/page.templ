@@ -15,6 +15,7 @@ templ Page(data PageData) {
 			<title>{ data.Title }</title>
 			<script src={ templ.SafeURL(data.AssetBase + "htmx.min.js") }></script>
 			<script src={ templ.SafeURL(data.AssetBase + "app.js") } defer></script>
+			<script src={ templ.SafeURL(data.AssetBase + "table.js") } defer></script>
 			<link rel="stylesheet" href={ templ.SafeURL(data.AssetBase + "styles.css") }/>
 		</head>
 		<body hx-sync="this:queue all">
@@ -37,24 +38,37 @@ templ Entities(data PageData) {
 	<div id="entities" data-view-mode={ data.Mode } class="space-y-5">
 		if data.Mode == "table" && len(data.Columns) > 0 {
 			<div class="max-h-[70vh] overflow-auto">
-				<table id="data-table" class="data-table table-fixed border-collapse text-left" style={ templ.SafeCSS(fmt.Sprintf("width:%dpx", len(data.Columns)*200+96)) }>
+				<table id="data-table" data-sort-url={ fmt.Sprintf("/s/%s/table/sort", data.Token) } data-highlights-url={ fmt.Sprintf("/s/%s/table/highlights", data.Token) } data-relative-highlights={ fmt.Sprint(data.RelativeHighlights) } class="data-table table-fixed border-collapse text-left" style={ templ.SafeCSS(fmt.Sprintf("width:%dpx", len(data.Columns)*200+152)) }>
 					<colgroup>
-						for range data.Columns {
-							<col style="width:200px"/>
+						<col data-column-key="number" style="width:56px"/>
+						for index := range data.Columns {
+							<col data-column-key={ fmt.Sprint(index) } style="width:200px"/>
 						}
-						<col style="width:96px"/>
+						<col data-column-key="actions" style="width:96px"/>
 					</colgroup>
 					<thead>
 						<tr>
+							<th scope="col" data-column-key="number" aria-sort="ascending" class="sticky top-0 z-10 border border-border bg-background px-2 py-2 text-sm font-medium text-muted-foreground">
+								<button type="button" data-column-sort="number" aria-label="Sort by row number" class="table-sort-button"><span>#</span><span data-sort-indicator aria-hidden="true">@Icon(data, "chevron-right")</span></button>
+							</th>
 							for index, column := range data.Columns {
-								<th scope="col" class="sticky top-0 z-10 border border-border bg-background px-3 py-2 text-sm font-medium">
-									<span class={ templ.Classes("block truncate", templ.KV("sr-only", !column.ShowLabel)) }>{ columnHeading(column) }</span>
-									<button type="button" role="separator" aria-orientation="vertical" aria-label={ "Resize " + columnHeading(column) } aria-controls="data-table" aria-valuemin="96" aria-valuenow="200" data-column-resize={ fmt.Sprint(index) } class="absolute inset-y-0 right-0 w-2 cursor-col-resize touch-none select-none hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"></button>
+								<th scope="col" data-column-key={ fmt.Sprint(index) } aria-sort="none" class="sticky top-0 z-10 border border-border bg-background px-2 py-2 text-sm font-medium">
+									<div class="flex min-w-0 items-center gap-1 pr-2">
+										<button type="button" data-column-drag={ fmt.Sprint(index) } aria-label={ "Move " + columnHeading(column) } title="Drag to move. Space then arrow keys to move with the keyboard." class="table-column-drag">@Icon(data, "dots")</button>
+										if column.Sortable {
+											<button type="button" data-column-sort={ fmt.Sprint(index) } aria-label={ "Sort by " + columnHeading(column) } class="table-sort-button">
+												<span class={ templ.Classes("truncate", templ.KV("sr-only", !column.ShowLabel)) }>{ columnHeading(column) }</span><span data-sort-indicator aria-hidden="true">@Icon(data, "chevron-right")</span>
+											</button>
+										} else {
+											<span class={ templ.Classes("block truncate", templ.KV("sr-only", !column.ShowLabel)) }>{ columnHeading(column) }</span>
+										}
+									</div>
+									<button type="button" role="separator" aria-orientation="vertical" aria-label={ "Resize " + columnHeading(column) } aria-controls="data-table" aria-valuemin="96" aria-valuenow="200" data-column-resize={ fmt.Sprint(index) } title="Drag to resize. Double-click or press Enter to fit content." class="absolute inset-y-0 right-0 w-2 cursor-col-resize touch-none select-none hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"></button>
 								</th>
 							}
-							<th scope="col" class="sticky top-0 z-10 border border-border bg-background px-3 py-2 text-sm font-medium">
+							<th scope="col" data-column-key="actions" class="sticky top-0 z-10 border border-border bg-background px-3 py-2 text-sm font-medium">
 								Actions
-								<button type="button" role="separator" aria-orientation="vertical" aria-label="Resize Actions" aria-controls="data-table" aria-valuemin="96" aria-valuenow="96" data-column-resize={ fmt.Sprint(len(data.Columns)) } class="absolute inset-y-0 right-0 w-2 cursor-col-resize touch-none select-none hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"></button>
+								<button type="button" role="separator" aria-orientation="vertical" aria-label="Resize Actions" aria-controls="data-table" aria-valuemin="96" aria-valuenow="96" data-column-resize="actions" title="Drag to resize. Double-click or press Enter to fit content." class="absolute inset-y-0 right-0 w-2 cursor-col-resize touch-none select-none hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"></button>
 							</th>
 						</tr>
 					</thead>
@@ -64,6 +78,7 @@ templ Entities(data PageData) {
 						}
 					</tbody>
 				</table>
+				<p data-table-announcement class="sr-only" role="status" aria-live="polite"></p>
 			</div>
 		} else {
 			for _, entity := range data.Entities {
@@ -74,9 +89,10 @@ templ Entities(data PageData) {
 }
 
 templ TableRow(data PageData, entity EntityView) {
-	<tr id={ fmt.Sprintf("entity-%d", entity.Index) }>
-		for _, widget := range entity.Cells {
-			<td class="border border-border p-0 align-top">
+	<tr id={ fmt.Sprintf("entity-%d", entity.Index) } data-entity-index={ fmt.Sprint(entity.Index) } class={ entity.HighlightClass }>
+		<td data-column-key="number" class="border border-border px-2 py-2 align-top text-right text-sm text-muted-foreground tabular-nums">{ fmt.Sprint(entity.Index + 1) }</td>
+		for index, widget := range entity.Cells {
+			<td data-column-key={ fmt.Sprint(index) } class="border border-border p-0 align-top">
 				if widget.Type == schema.WidgetTextarea || widget.Type == schema.WidgetMultiSelect {
 					<details open?={ widget.Field.Error!="" }>
 						@CellSummary(entity.Index, *widget.Field, false)
@@ -87,7 +103,7 @@ templ TableRow(data PageData, entity EntityView) {
 				}
 			</td>
 		}
-		<td class="border border-border p-2 align-top text-sm"><button hx-post={ templ.SafeURL(fmt.Sprintf("/s/%s/entities/%d/reset", data.Token, entity.Index)) } hx-target={ fmt.Sprintf("#entity-%d", entity.Index) } hx-swap="outerHTML settle:0ms">Reset</button></td>
+		<td data-column-key="actions" class="border border-border p-2 align-top text-sm"><button hx-post={ templ.SafeURL(fmt.Sprintf("/s/%s/entities/%d/reset", data.Token, entity.Index)) } hx-target={ fmt.Sprintf("#entity-%d", entity.Index) } hx-swap="outerHTML settle:0ms">Reset</button></td>
 	</tr>
 }
 

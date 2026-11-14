@@ -32,6 +32,14 @@ view:
   mode: table
   show_labels: true
   table:
+    timezone: UTC
+    row_highlights:
+      - intent: danger
+        when: { field: payment_status, op: eq, value: failed }
+      - intent: warning
+        when: { field: payment_status, op: eq, value: pending }
+      - intent: info
+        when: { field: discount, op: gt, value: 0 }
     columns:
       - { source: id }
       - { source: payment_status }

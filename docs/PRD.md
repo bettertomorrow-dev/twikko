@@ -17,6 +17,7 @@ apply to the source system. Twikko itself has no source-system integration.
 - Support the field types `text`, `longtext`, `number`, `bool`, `enum`,
   `multienum`, `date`, `time`, and `datetime`.
 - Keep read-only fields immutable and report field-level validation errors.
+- Sort table rows, arrange columns, and highlight rows with typed conditions.
 - Return complete entities and a per-field change list in YAML.
 - Bind only to localhost and keep session state in memory.
 
@@ -25,7 +26,7 @@ apply to the source system. Twikko itself has no source-system integration.
 - Creating or deleting records.
 - Remote hosting, authentication, or concurrent editing.
 - Calls to Jira, databases, or other third-party APIs.
-- Editing nested paths, schema inference, sorting, filtering, formulas, bulk
+- Editing nested paths, schema inference, filtering, formulas, bulk
   operations, or range selection.
 - Persisting sessions after the process exits.
 - Virtualizing the table before measurements show it is needed.
@@ -137,6 +138,26 @@ Save until it is corrected.
   editors without separate borders or repeated captions.
 - Let users resize columns by dragging header boundaries or using the
   keyboard. Width changes survive row Reset and are local to the page.
+- Auto-fit a column by double-clicking its resize boundary or pressing Enter
+  on the focused resize handle.
+- Start with rows in file order. A muted first column shows permanent,
+  one-based source row numbers. Sort each column ascending or descending;
+  sorting the number column ascending restores file order.
+- Keep sorting stable for equal values and place missing, null, and invalid
+  values last in both directions. Sorting applies on request, so edits do not
+  move rows while the user works. Preserve source identity and output order.
+- Move data columns with a separate drag handle or its keyboard controls.
+  Numbers and actions remain at the edges. Widths follow their columns, and
+  row Reset preserves the arrangement. Reloading restores the view layout.
+- Strengthen the hovered cell's border without changing its size. While
+  Shift is held, tint its row and column with the same intensity at their
+  intersection. Keep focus, errors, and changed markers readable.
+- Support `view.table.row_highlights` conditions for row backgrounds, using
+  semantic intents and the first matching rule. These conditions affect
+  presentation and do not add validation constraints.
+
+See [table-interactions.md](table-interactions.md) for comparison rules,
+keyboard controls, and the row-highlight YAML contract.
 
 ## Data volume and measurements
 
