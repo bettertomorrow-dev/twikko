@@ -30,6 +30,7 @@ templ Page(data PageData) {
 				<footer class="mt-12 text-center text-xs text-muted-foreground/60 select-none">Twikko, 2026</footer>
 			</main>
 			@SaveBar(data, false)
+			@ConfirmationDialog("reset-confirmation", "Reset changes?", "The selected fields will return to their initial values. You can undo this reset.", "Reset", "Keep editing")
 		</body>
 	</html>
 }
@@ -88,8 +89,8 @@ templ Entities(data PageData) {
 	</div>
 }
 
-templ TableRow(data PageData, entity EntityView) {
-	<tr id={ fmt.Sprintf("entity-%d", entity.Index) } data-entity-index={ fmt.Sprint(entity.Index) } class={ entity.HighlightClass }>
+templ TableRow(data PageData, entity EntityView, oob ...bool) {
+	<tr id={ fmt.Sprintf("entity-%d", entity.Index) } { oobAttrs(len(oob) > 0 && oob[0])... } data-entity-index={ fmt.Sprint(entity.Index) } class={ entity.HighlightClass }>
 		<td data-column-key="number" class="border border-border px-2 py-2 align-top text-right text-sm text-muted-foreground tabular-nums">{ fmt.Sprint(entity.Index + 1) }</td>
 		for index, widget := range entity.Cells {
 			<td data-column-key={ fmt.Sprint(index) } class="border border-border p-0 align-top">
@@ -103,12 +104,12 @@ templ TableRow(data PageData, entity EntityView) {
 				}
 			</td>
 		}
-		<td data-column-key="actions" class="border border-border p-2 align-top text-sm"><button hx-post={ templ.SafeURL(fmt.Sprintf("/s/%s/entities/%d/reset", data.Token, entity.Index)) } hx-target={ fmt.Sprintf("#entity-%d", entity.Index) } hx-swap="outerHTML settle:0ms">Reset</button></td>
+		<td data-column-key="actions" class="border border-border p-2 align-top text-sm"><button data-confirm-reset hx-post={ templ.SafeURL(fmt.Sprintf("/s/%s/entities/%d/reset", data.Token, entity.Index)) } hx-target={ fmt.Sprintf("#entity-%d", entity.Index) } hx-swap="outerHTML settle:0ms">Reset</button></td>
 	</tr>
 }
 
-templ EntityCard(data PageData, entity EntityView) {
-	<section id={ fmt.Sprintf("entity-%d", entity.Index) } class="rounded-lg border bg-card text-card-foreground shadow-xs [content-visibility:auto] [contain-intrinsic-size:auto_600px]">
+templ EntityCard(data PageData, entity EntityView, oob ...bool) {
+	<section { oobAttrs(len(oob) > 0 && oob[0])... } id={ fmt.Sprintf("entity-%d", entity.Index) } class="rounded-lg border bg-card text-card-foreground shadow-xs [content-visibility:auto] [contain-intrinsic-size:auto_600px]">
 		<header class={ templ.Classes("flex items-center justify-between gap-4 px-5 py-4", templ.KV("border-b", !entity.Collapsed)) }>
 			<div class="flex min-w-0 items-center gap-3">
 				@CollapseToggle(data, entity)
@@ -156,7 +157,7 @@ templ EntityCard(data PageData, entity EntityView) {
 // happen in a header control while the card is collapsed, so an edit refreshes
 // it out of band.
 templ EntityBadges(entity EntityView, oob bool) {
-	<div id={ fmt.Sprintf("entity-badges-%d", entity.Index) } { oobAttrs(oob)... } class="flex shrink-0 items-center gap-3 empty:hidden">
+	<div id={ fmt.Sprintf("entity-badges-%d", entity.Index) } data-has-changes={ fmt.Sprint(entity.ChangedCount > 0) } { oobAttrs(oob)... } class="flex shrink-0 items-center gap-3 empty:hidden">
 		if entity.Collapsed && entity.HasErrors {
 			<span class="shrink-0 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">Has errors</span>
 		}
@@ -275,6 +276,7 @@ templ CardMenu(data PageData, entity EntityView) {
 				type="button"
 				role="menuitem"
 				class="block w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+				data-confirm-reset
 				hx-post={ templ.SafeURL(fmt.Sprintf("/s/%s/entities/%d/reset", data.Token, entity.Index)) }
 				hx-target={ fmt.Sprintf("#entity-%d", entity.Index) }
 				hx-swap="outerHTML settle:0ms"
@@ -449,10 +451,9 @@ templ FieldStatus(index int, field FieldView) {
 	</div>
 }
 
-// SaveBar is the sticky action bar. With oob it renders as an out-of-band
-// htmx swap that replaces the bar already on the page.
+// Refresh the count without replacing the open actions dropdown.
 templ SaveStatus(data PageData, oob bool) {
-	<p id="save-status" { oobAttrs(oob)... } class="text-sm text-muted-foreground" role="status">
+	<p id="save-status" data-has-changes={ fmt.Sprint(data.Changes > 0 || data.HasDrafts) } { oobAttrs(oob)... } class="text-sm text-muted-foreground" role="status">
 		{ fmt.Sprintf("%d changed field(s)",data.Changes) }
 		if data.HasErrors {
 			<span class="ml-2 text-destructive">Fix validation errors before saving.</span>
@@ -464,16 +465,36 @@ templ SaveBar(data PageData, oob bool) {
 	if oob {
 		@SaveStatus(data, true)
 	} else {
-		<div id="save-bar" class="fixed inset-x-0 bottom-0 border-t bg-background/90 px-4 py-3 backdrop-blur">
-			<div class="mx-auto flex max-w-5xl items-center justify-between gap-4">
-				@SaveStatus(data, false)
-				<div class="flex gap-3">
-					<button class={ outlineButtonClass } hx-post={ templ.SafeURL(fmt.Sprintf("/s/%s/cancel", data.Token)) } hx-target="body" hx-swap="innerHTML settle:0ms">Cancel</button>
+		<div id="save-bar" data-corner="bottom-right" class="fixed z-40 max-w-[calc(100vw-2.5rem)]">
+			<details data-menu class="relative">
+				<summary data-action-drag title="Drag to a corner. Alt + arrow keys also move this menu." class="flex touch-none select-none cursor-grab list-none items-center gap-3 rounded-full border bg-background px-5 py-3 shadow-lg">
+					@SaveStatus(data, false)
+					@Icon(data, "dots")
+				</summary>
+				<div data-action-menu class="absolute flex min-w-48 flex-col gap-1 rounded-md border bg-popover p-2 text-popover-foreground shadow-md">
 					<button class={ primaryButtonClass } hx-post={ templ.SafeURL(fmt.Sprintf("/s/%s/save", data.Token)) } hx-target="body" hx-swap="innerHTML settle:0ms">Save</button>
+					<button class={ outlineButtonClass } data-confirm-reset hx-post={ templ.SafeURL(fmt.Sprintf("/s/%s/reset", data.Token)) } hx-target="#history-result" hx-swap="innerHTML settle:0ms">Reset</button>
+					<button class={ outlineButtonClass } hx-post={ templ.SafeURL(fmt.Sprintf("/s/%s/cancel", data.Token)) } hx-target="body" hx-swap="innerHTML settle:0ms">Cancel</button>
 				</div>
-			</div>
+			</details>
+			<div id="history-result" hidden></div>
+			<button id="history-undo" hidden hx-post={ templ.SafeURL(fmt.Sprintf("/s/%s/undo", data.Token)) } hx-target="#history-result" hx-swap="innerHTML settle:0ms">Undo</button>
+			<button id="history-redo" hidden hx-post={ templ.SafeURL(fmt.Sprintf("/s/%s/redo", data.Token)) } hx-target="#history-result" hx-swap="innerHTML settle:0ms">Redo</button>
 		</div>
 	}
+}
+
+// ConfirmationDialog uses native modal focus trapping and Escape dismissal.
+// The caller supplies the copy; JS resumes the pending action only on confirm.
+templ ConfirmationDialog(id, title, message, confirmLabel, cancelLabel string) {
+	<dialog id={ id } aria-labelledby={ id + "-title" } aria-describedby={ id + "-message" } class="fixed inset-0 m-auto w-full max-w-md rounded-lg border bg-popover p-6 text-popover-foreground shadow-lg backdrop:bg-background/70">
+		<h2 id={ id + "-title" } class="text-lg font-semibold">{ title }</h2>
+		<p id={ id + "-message" } class="mt-2 text-sm text-muted-foreground">{ message }</p>
+		<form method="dialog" class="mt-6 flex justify-end gap-3">
+			<button value="cancel" autofocus class={ outlineButtonClass }>{ cancelLabel }</button>
+			<button value="confirm" class={ primaryButtonClass }>{ confirmLabel }</button>
+		</form>
+	</dialog>
 }
 
 // Icon draws a vendored Tabler icon (static/icons/<name>.svg) in the current

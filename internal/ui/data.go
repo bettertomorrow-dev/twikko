@@ -238,6 +238,7 @@ type PageData struct {
 	Entities           []EntityView
 	Changes            int
 	HasErrors          bool
+	HasDrafts          bool
 }
 
 const defaultTitle = "Twikko"
@@ -272,6 +273,7 @@ func NewPageData(store *session.Store, token string) PageData {
 		AssetBase:          "/s/" + token + "/assets/",
 		Changes:            store.ChangedCount(),
 		HasErrors:          store.HasErrors(),
+		HasDrafts:          store.HasDrafts(),
 		Entities:           make([]EntityView, store.EntityCount()),
 	}
 	var globalLabels *bool

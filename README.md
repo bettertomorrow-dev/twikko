@@ -203,3 +203,13 @@ Hover a cell to strengthen its border, or hold Shift to tint its row and column.
 Views can also set `view.table.row_highlights` rules for conditional row
 backgrounds. See [table interactions and conditions](docs/table-interactions.md)
 for keyboard controls, supported operators, and YAML examples.
+
+
+The floating change counter opens Save, Reset, and Cancel in both views. Reset
+asks for confirmation when there are edits. Press Cmd/Ctrl+Z to undo and
+Cmd/Ctrl+Shift+Z to redo. Typing in one field forms one step until you leave it.
+Reset is undoable too. History, including invalid drafts, lives in the CLI
+session and survives a page reload. New edits after undo discard the redo branch.
+
+Drag the floating action button to snap it to any screen corner with the same
+inset. With the button focused, Alt + arrow keys also choose a corner.

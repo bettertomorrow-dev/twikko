@@ -94,6 +94,8 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.Method == http.MethodGet && relative == "":
 		s.render(w, ui.Page(ui.NewPageData(s.store, s.token)))
+	case r.Method == http.MethodPost && (relative == "undo" || relative == "redo" || relative == "reset"):
+		s.requireWriteHost(w, r, s.historyAction)
 	case r.Method == http.MethodPost && relative == "save":
 		s.requireWriteHost(w, r, s.save)
 	case r.Method == http.MethodPost && relative == "cancel":
@@ -201,7 +203,7 @@ func (s *Server) entityAction(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid form", http.StatusBadRequest)
 		return
 	}
-	if err := s.store.Edit(index, name, r.Form["value"], (r.Form.Has("value") || r.Form.Get("present") == "true")); err != nil {
+	if err := s.store.EditGrouped(index, name, r.Form["value"], (r.Form.Has("value") || r.Form.Get("present") == "true"), r.Form.Get("history_group")); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -230,6 +232,27 @@ func (s *Server) entityAction(w http.ResponseWriter, r *http.Request) {
 	s.render(w, ui.DisplaySlots(data, entity))
 	if data.Mode != "table" {
 		s.render(w, ui.EntityBadges(entity, true))
+	}
+	s.renderOOBSaveBar(w, data)
+}
+
+// History updates rows/cards out of band, retaining table widths and scroll.
+func (s *Server) historyAction(w http.ResponseWriter, r *http.Request) {
+	var indices []int
+	if strings.HasSuffix(r.URL.Path, "/reset") {
+		indices = s.store.ResetAll()
+	} else {
+		indices = s.store.MoveHistory(strings.HasSuffix(r.URL.Path, "/redo"))
+	}
+	data := ui.NewPageData(s.store, s.token)
+	for _, index := range indices {
+		if data.Mode == "table" {
+			fmt.Fprint(w, `<template>`)
+			s.render(w, ui.TableRow(data, data.Entity(index), true))
+			fmt.Fprint(w, `</template>`)
+		} else {
+			s.render(w, ui.EntityCard(data, data.Entity(index), true))
+		}
 	}
 	s.renderOOBSaveBar(w, data)
 }
