@@ -503,9 +503,6 @@ var pendingEdits = 0;
 document.addEventListener("htmx:configRequest", function (event) {
   if ((event.detail.elt.getAttribute("hx-post") || "").includes("/fields/")) pendingEdits++;
 });
-document.addEventListener("htmx:afterRequest", function (event) {
-  if ((event.detail.elt.getAttribute("hx-post") || "").includes("/fields/")) pendingEdits = Math.max(0, pendingEdits - 1);
-});
 
 // Lock as soon as an action is queued: later input must not be detached by it.
 document.addEventListener("htmx:confirm", function (event) {
@@ -540,6 +537,7 @@ document.addEventListener("htmx:beforeRequest", function (event) {
   event.detail.xhr.twikkoLockedRoot = root;
 });
 document.addEventListener("htmx:afterRequest", function (event) {
+  if ((event.detail.elt.getAttribute("hx-post") || "").includes("/fields/")) pendingEdits = Math.max(0, pendingEdits - 1);
   var root = event.detail.xhr.twikkoLockedRoot;
   if (!root) return;
   root.inert = false;
