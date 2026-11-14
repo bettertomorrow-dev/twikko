@@ -127,15 +127,17 @@ present with null. `to` is always present. A saved result always contains
 
 ### Table editor
 
-Run `make run-table` to open the task records directly in a table, or use:
+Run `make run-table` to open 500 invented orders in a table, or use:
 
 ```sh
-bin/twikko --view examples/tasks.view.yaml --data examples/tasks.csv \
+bin/twikko --view examples/orders.view.yaml --data examples/orders.csv \
   --mode table --output /tmp/twikko-table-out.yaml --open
 ```
 
-The example includes a read-only ID, a required title, status options, numbers,
-dates, multiple labels, and nullable approval values. Edit cells, resize columns
+The example includes payment status and type, purchase and delivery prices,
+UTC timestamps, account IDs, and regions. All amounts are in USD. Only 5% of
+orders have a discount, expressed as a fixed amount. Accounts appear one to seven
+times, scattered throughout the table. Edit cells, resize columns
 by dragging their heading edges, and select Save to write the complete records
 and field changes to `/tmp/twikko-table-out.yaml`.
 
@@ -165,7 +167,7 @@ templates and static assets are embedded in the binary.
 | `make test` | Run Go tests. |
 | `make build` | Build `bin/twikko`. |
 | `make run` | Open the CSV example and write `/tmp/twikko-out.yaml`. |
-| `make run-table` | Open the CSV example in a table and write `/tmp/twikko-table-out.yaml`. |
+| `make run-table` | Open the 500-order CSV example in a table and write `/tmp/twikko-table-out.yaml`. |
 
 The first-version support target is 200 records × 20 fields, up to 2 MiB and
 20 multienum options. It is measurable, not a truncation limit. Opening and

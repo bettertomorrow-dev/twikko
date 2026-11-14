@@ -1,0 +1,44 @@
+version: 1
+title: Example orders
+description: 500 invented orders. All amounts are in USD; discounts are fixed amounts, not percentages. Date/time is UTC.
+
+schema:
+  id_field: id
+  fields:
+    - { name: id, label: ID, type: text, readonly: true }
+    - name: payment_status
+      label: Payment status
+      type: enum
+      options: [paid, pending, failed, refunded, partially_refunded]
+    - name: payment_type
+      label: Payment type
+      type: enum
+      options: [card, bank_transfer, paypal, apple_pay, gift_card]
+    - { name: purchase_price, label: Purchase price, type: number, required: true }
+    - { name: delivery_price, label: Delivery price, type: number }
+    - { name: date_time, label: Date/time, type: datetime, required: true }
+    - { name: account_id, label: Account id, type: text }
+    - { name: discount, label: Discount, type: number }
+    - name: region
+      label: Region
+      type: enum
+      options: [us, eu, uk, ca, au, apac, latam, mea]
+
+import:
+  csv:
+    delimiter: ','
+
+view:
+  mode: table
+  show_labels: true
+  table:
+    columns:
+      - { source: id }
+      - { source: payment_status }
+      - { source: payment_type }
+      - { source: purchase_price }
+      - { source: delivery_price }
+      - { source: date_time }
+      - { source: account_id }
+      - { source: discount }
+      - { source: region }
