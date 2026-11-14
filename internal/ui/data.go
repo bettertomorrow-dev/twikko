@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -165,13 +166,14 @@ type FieldView struct {
 }
 
 type EntityView struct {
-	Index        int
-	ID           string
-	Title        string
-	Collapsed    bool
-	ChangedCount int
-	HasErrors    bool
-	Fields       []FieldView
+	HighlightClass string
+	Index          int
+	ID             string
+	Title          string
+	Collapsed      bool
+	ChangedCount   int
+	HasErrors      bool
+	Fields         []FieldView
 	// HasHeader is true when the schema configures header widgets. Widgets then
 	// replaces the plain title.
 	HasHeader bool
@@ -198,6 +200,7 @@ type RowView struct {
 // values. A control carries the field it edits. A display widget carries what
 // to draw, and has no value when its source is empty.
 type WidgetView struct {
+	Sortable bool
 	// ID names a display slot, so an edit can refresh it out of band.
 	ID string
 	// Type is the display type, or for a control the kind it resolved to.
@@ -224,19 +227,31 @@ func showWidgetLabel(global, local *bool, fallback bool) bool {
 }
 
 type PageData struct {
-	NewFormat   bool
-	Mode        string
-	Columns     []WidgetView
-	Token       string
-	AssetBase   string
-	Title       string
-	Description string
-	Entities    []EntityView
-	Changes     int
-	HasErrors   bool
+	RelativeHighlights bool
+	NewFormat          bool
+	Mode               string
+	Columns            []WidgetView
+	Token              string
+	AssetBase          string
+	Title              string
+	Description        string
+	Entities           []EntityView
+	Changes            int
+	HasErrors          bool
 }
 
 const defaultTitle = "Twikko"
+
+// Only these classes can be selected by a view's row rules.
+func RowHighlightClass(intent schema.Intent) string {
+	return map[schema.Intent]string{
+		schema.IntentNeutral: "row-highlight-neutral",
+		schema.IntentInfo:    "row-highlight-info",
+		schema.IntentSuccess: "row-highlight-success",
+		schema.IntentWarning: "row-highlight-warning",
+		schema.IntentDanger:  "row-highlight-danger",
+	}[intent]
+}
 
 func pageTitle(title string) string {
 	if title == "" {
@@ -248,29 +263,22 @@ func pageTitle(title string) string {
 func NewPageData(store *session.Store, token string) PageData {
 	s := store.Schema()
 	data := PageData{
-		NewFormat:   store.View() != nil,
-		Mode:        store.Mode(),
-		Token:       token,
-		Title:       pageTitle(store.Title()),
-		Description: store.Description(),
-		AssetBase:   "/s/" + token + "/assets/",
-		Changes:     store.ChangedCount(),
-		HasErrors:   store.HasErrors(),
-		Entities:    make([]EntityView, store.EntityCount()),
+		RelativeHighlights: store.HasRelativeHighlights(),
+		NewFormat:          store.View() != nil,
+		Mode:               store.Mode(),
+		Token:              token,
+		Title:              pageTitle(store.Title()),
+		Description:        store.Description(),
+		AssetBase:          "/s/" + token + "/assets/",
+		Changes:            store.ChangedCount(),
+		HasErrors:          store.HasErrors(),
+		Entities:           make([]EntityView, store.EntityCount()),
 	}
 	var globalLabels *bool
 	if v := store.View(); v != nil && v.ShowLabels != nil {
 		globalLabels = v.ShowLabels
 	}
-	var columns []schema.Widget
-	if v := store.View(); v != nil {
-		columns = v.Table.Columns
-	}
-	if len(columns) == 0 {
-		for _, f := range s.Fields {
-			columns = append(columns, schema.Widget{Type: schema.WidgetControl, Source: f.Name})
-		}
-	}
+	columns := store.TableColumns()
 	for _, w := range columns {
 		label := w.Label
 		if label == "" {
@@ -282,9 +290,11 @@ func NewPageData(store *session.Store, token string) PageData {
 				}
 			}
 		}
-		data.Columns = append(data.Columns, WidgetView{Label: label, ShowLabel: showWidgetLabel(globalLabels, w.ShowLabel, true)})
+		sortable := slices.ContainsFunc(s.Fields, func(f schema.Field) bool { return f.Name == w.Source })
+		data.Columns = append(data.Columns, WidgetView{Label: label, ShowLabel: showWidgetLabel(globalLabels, w.ShowLabel, true), Sortable: sortable})
 	}
 	inHeader := headerControls(s)
+	now := time.Now()
 	for index := range data.Entities {
 		entity := store.Entity(index)
 		id := nodeText(schema.MapValue(entity, s.IDField))
@@ -299,11 +309,12 @@ func NewPageData(store *session.Store, token string) PageData {
 		}
 		view := &data.Entities[index]
 		*view = EntityView{
-			Index:     index,
-			ID:        id,
-			Title:     title,
-			Collapsed: store.Collapsed(index),
-			Fields:    make([]FieldView, len(s.Fields)),
+			HighlightClass: RowHighlightClass(store.RowHighlight(index, now)),
+			Index:          index,
+			ID:             id,
+			Title:          title,
+			Collapsed:      store.Collapsed(index),
+			Fields:         make([]FieldView, len(s.Fields)),
 		}
 		byName := make(map[string]*FieldView, len(s.Fields))
 		for fieldIndex, field := range s.Fields {

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"go.yaml.in/yaml/v3"
@@ -21,7 +22,11 @@ type View struct {
 	Cards      Cards  `yaml:"cards"`
 }
 type Table struct {
-	Columns []Widget `yaml:"columns"`
+	Columns  []Widget `yaml:"columns"`
+	Timezone string   `yaml:"timezone,omitempty"`
+	// Location is resolved once when the view is loaded. Nil uses time.Local.
+	Location      *time.Location `yaml:"-"`
+	RowHighlights []RowHighlight `yaml:"row_highlights,omitempty"`
 }
 type Cards struct {
 	Header *Header `yaml:"header"`
@@ -104,7 +109,10 @@ func LoadViewWithMode(viewPath, dataPath, mode string) (*Document, error) {
 			}
 		}
 		if t := MapValue(vn, "table"); t != nil {
-			if err = checkKeys(t, "view.table", "columns"); err != nil {
+			if err = checkKeys(t, "view.table", "columns", "timezone", "row_highlights"); err != nil {
+				return nil, err
+			}
+			if err = decodeTableHighlights(t, &v.Table, s.Fields); err != nil {
 				return nil, err
 			}
 			if c := MapValue(t, "columns"); c != nil {
