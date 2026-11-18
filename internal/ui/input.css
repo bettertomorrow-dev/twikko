@@ -115,6 +115,11 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+  }
   body {
     @apply bg-background text-foreground antialiased;
   }
@@ -138,6 +143,13 @@
 }
 
 /* Table cells provide the borders; editors fill a cell without card chrome. */
+.data-table :is(th, td) {
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.data-table :is(th, td):first-child { border-left: 1px solid var(--border); }
+.data-table th { border-top: 1px solid var(--border); }
+
 .data-table [data-field-control],
 .data-table [role="group"],
 .data-table [id^="widget-"] {
@@ -157,12 +169,6 @@
   width: 100%;
   min-width: 0;
   background: transparent;
-}
-.data-table input:not([type="checkbox"]):focus-visible,
-.data-table select:focus-visible,
-.data-table textarea:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: -2px;
 }
 .data-table [data-picker-input] { padding-left: 2.25rem; }
 .data-table textarea { min-height: 6rem; }
@@ -195,17 +201,12 @@
 .table-sort-button {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.25rem;
-  min-width: 0;
-  width: 100%;
-  text-align: left;
+  justify-content: center;
+  flex: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  cursor: pointer;
   border-radius: 0.125rem;
-}
-.table-sort-button:focus-visible,
-.table-column-drag:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
 }
 .table-sort-button [data-sort-indicator] {
   display: inline-flex;
@@ -216,17 +217,15 @@
 .data-table th[aria-sort="ascending"] [data-sort-indicator] { opacity: 1; transform: rotate(-90deg); }
 .data-table th[aria-sort="descending"] [data-sort-indicator] { opacity: 1; transform: rotate(90deg); }
 .table-column-drag {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--muted-foreground);
+  flex: 1;
+  min-width: 0;
+  min-height: 1.5rem;
+  text-align: left;
   cursor: grab;
   touch-action: none;
-  flex-shrink: 0;
+  user-select: none;
   border-radius: 0.125rem;
 }
-.table-column-drag .icon { width: 0.875rem; height: 0.875rem; transform: rotate(90deg); }
-.table-column-drag:hover,
 .table-column-drag[aria-pressed="true"] { color: var(--foreground); background: var(--accent); }
 .data-table[data-column-moving] { user-select: none; }
 .data-table[data-column-moving] .table-column-drag { cursor: grabbing; }
@@ -244,6 +243,37 @@
 }
 .data-table tbody td[data-cell-hover] { box-shadow: inset 0 0 0 1px var(--ring); }
 .data-table [aria-invalid="true"] { outline: 1px solid var(--destructive); outline-offset: -1px; }
-.data-table input:not([type="checkbox"]):focus-visible,
-.data-table select:focus-visible,
-.data-table textarea:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+
+/* Keyboard navigation uses the information colour in both themes. */
+[data-card]:has(> [data-card-nav]:focus-visible) {
+  outline: 2px solid var(--info);
+  outline-offset: 2px;
+}
+[data-card-nav]:focus-visible {
+  outline: none;
+}
+[data-table-cell]:focus-visible {
+  outline: 2px solid var(--info);
+  outline-offset: -2px;
+}
+[data-card][data-isolated] {
+  box-shadow: 0 0 0 2px var(--info);
+}
+[data-card] :focus-visible:not([data-card-nav]),
+.data-table :is(input, select, textarea, button, summary):focus-visible,
+[role="switch"]:focus-visible + span {
+  outline: 2px solid var(--info);
+  outline-offset: 2px;
+}
+@media (forced-colors: active) {
+  [data-card]:has(> [data-card-nav]:focus-visible),
+  [data-table-cell]:focus-visible,
+  [data-card] :focus-visible:not([data-card-nav]),
+  .data-table :is(input, select, textarea, button, summary):focus-visible,
+  [role="switch"]:focus-visible + span {
+    outline-color: Highlight;
+  }
+  [data-card][data-isolated] {
+    outline: 1px solid Highlight;
+  }
+}

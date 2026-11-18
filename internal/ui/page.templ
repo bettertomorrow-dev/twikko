@@ -7,6 +7,7 @@ import (
 )
 
 templ Page(data PageData) {
+	{{ tableMode := data.Mode == "table" && len(data.Columns) > 0 }}
 	<!DOCTYPE html>
 	<html lang="en">
 		<head>
@@ -16,19 +17,24 @@ templ Page(data PageData) {
 			<script src={ templ.SafeURL(data.AssetBase + "htmx.min.js") }></script>
 			<script src={ templ.SafeURL(data.AssetBase + "app.js") } defer></script>
 			<script src={ templ.SafeURL(data.AssetBase + "table.js") } defer></script>
+			<script src={ templ.SafeURL(data.AssetBase + "keyboard.js") } defer></script>
 			<link rel="stylesheet" href={ templ.SafeURL(data.AssetBase + "styles.css") }/>
 		</head>
-		<body hx-sync="this:queue all">
-			<main class={ templ.Classes("mx-auto px-4 py-8 pb-32", templ.KV("max-w-5xl", data.Mode != "table")) }>
-				<header class="mb-6">
+		<body hx-sync="this:queue all" class={ templ.Classes(templ.KV("@container", tableMode)) }>
+			<div class={ templ.Classes(templ.KV("grid min-h-dvh w-max min-w-full grid-rows-[auto_1fr_auto]", tableMode)) }>
+				<header class={ templ.Classes("mb-6 px-4 pt-8", templ.KV("sticky left-0 w-[100cqw]", tableMode), templ.KV("mx-auto w-full max-w-5xl", !tableMode)) }>
 					<h1 class="text-2xl font-semibold tracking-tight">{ data.Title }</h1>
 					if data.Description != "" {
 						<p class="mt-1 whitespace-pre-line text-sm text-muted-foreground">{ data.Description }</p>
 					}
 				</header>
 				@Entities(data)
-				<footer class="mt-12 text-center text-xs text-muted-foreground/60 select-none">Twikko, 2026</footer>
-			</main>
+				<footer class={ templ.Classes("px-4 text-muted-foreground/60 select-none", templ.KV("sticky left-0 flex min-h-18 w-[100cqw] items-end pb-1 max-sm:pb-18", tableMode), templ.KV("mt-12 pb-32", !tableMode)) }>
+					<div class="flex h-6 w-full justify-center">
+						@Logo()
+					</div>
+				</footer>
+			</div>
 			@SaveBar(data, false)
 			@ConfirmationDialog("reset-confirmation", "Reset changes?", "The selected fields will return to their initial values. You can undo this reset.", "Reset", "Keep editing")
 		</body>
@@ -36,64 +42,70 @@ templ Page(data PageData) {
 }
 
 templ Entities(data PageData) {
-	<div id="entities" data-view-mode={ data.Mode } class="space-y-5">
-		if data.Mode == "table" && len(data.Columns) > 0 {
-			<div class="max-h-[70vh] overflow-auto">
-				<table id="data-table" data-sort-url={ fmt.Sprintf("/s/%s/table/sort", data.Token) } data-highlights-url={ fmt.Sprintf("/s/%s/table/highlights", data.Token) } data-relative-highlights={ fmt.Sprint(data.RelativeHighlights) } class="data-table table-fixed border-collapse text-left" style={ templ.SafeCSS(fmt.Sprintf("width:%dpx", len(data.Columns)*200+152)) }>
-					<colgroup>
-						<col data-column-key="number" style="width:56px"/>
-						for index := range data.Columns {
-							<col data-column-key={ fmt.Sprint(index) } style="width:200px"/>
-						}
-						<col data-column-key="actions" style="width:96px"/>
-					</colgroup>
-					<thead>
-						<tr>
-							<th scope="col" data-column-key="number" aria-sort="ascending" class="sticky top-0 z-10 border border-border bg-background px-2 py-2 text-sm font-medium text-muted-foreground">
-								<button type="button" data-column-sort="number" aria-label="Sort by row number" class="table-sort-button"><span>#</span><span data-sort-indicator aria-hidden="true">@Icon(data, "chevron-right")</span></button>
+	{{ tableMode := data.Mode == "table" && len(data.Columns) > 0 }}
+	<main id="entities" data-view-mode={ data.Mode } class={ templ.Classes(templ.KV("m-0 min-h-0 min-w-0 p-0", tableMode), templ.KV("mx-auto w-full max-w-5xl space-y-5 px-4", !tableMode)) }>
+		if tableMode {
+			<table id="data-table" data-sort-url={ fmt.Sprintf("/s/%s/table/sort", data.Token) } data-highlights-url={ fmt.Sprintf("/s/%s/table/highlights", data.Token) } data-relative-highlights={ fmt.Sprint(data.RelativeHighlights) } class="data-table min-w-full table-fixed border-separate border-spacing-0 text-left" style={ templ.SafeCSS(fmt.Sprintf("width:%dpx", len(data.Columns)*200+152)) }>
+				<colgroup>
+					<col data-column-key="number" style="width:56px"/>
+					for index := range data.Columns {
+						<col data-column-key={ fmt.Sprint(index) } style="width:200px"/>
+					}
+					<col data-column-key="actions" style="width:96px"/>
+				</colgroup>
+				<thead>
+					<tr>
+						<th scope="col" data-column-key="number" aria-sort="ascending" class="sticky top-0 z-10 bg-background px-2 py-2 text-sm font-medium text-muted-foreground">
+							<div class="flex items-center justify-between gap-1">
+								<span>#</span>
+								@ColumnSort(data, "number", "row number")
+							</div>
+						</th>
+						for index, column := range data.Columns {
+							<th scope="col" data-column-key={ fmt.Sprint(index) } aria-sort="none" class="sticky top-0 z-10 cursor-grab bg-background px-2 py-2 text-sm font-medium">
+								<div class="flex min-w-0 gap-1 pr-2">
+									<button type="button" data-column-drag={ fmt.Sprint(index) } aria-label={ "Move " + columnHeading(column) } title="Drag to move. Space then arrow keys to move with the keyboard." class="table-column-drag">
+										<span class={ templ.Classes("block truncate", templ.KV("sr-only", !column.ShowLabel)) }>{ columnHeading(column) }</span>
+									</button>
+									if column.Sortable {
+										@ColumnSort(data, fmt.Sprint(index), columnHeading(column))
+									}
+								</div>
+								<button type="button" role="separator" aria-orientation="vertical" aria-label={ "Resize " + columnHeading(column) } aria-controls="data-table" aria-valuemin="96" aria-valuenow="200" data-column-resize={ fmt.Sprint(index) } title="Drag to resize. Double-click or press Enter to fit content." class="absolute inset-y-0 right-0 w-2 cursor-col-resize touch-none select-none hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"></button>
 							</th>
-							for index, column := range data.Columns {
-								<th scope="col" data-column-key={ fmt.Sprint(index) } aria-sort="none" class="sticky top-0 z-10 border border-border bg-background px-2 py-2 text-sm font-medium">
-									<div class="flex min-w-0 items-center gap-1 pr-2">
-										<button type="button" data-column-drag={ fmt.Sprint(index) } aria-label={ "Move " + columnHeading(column) } title="Drag to move. Space then arrow keys to move with the keyboard." class="table-column-drag">@Icon(data, "dots")</button>
-										if column.Sortable {
-											<button type="button" data-column-sort={ fmt.Sprint(index) } aria-label={ "Sort by " + columnHeading(column) } class="table-sort-button">
-												<span class={ templ.Classes("truncate", templ.KV("sr-only", !column.ShowLabel)) }>{ columnHeading(column) }</span><span data-sort-indicator aria-hidden="true">@Icon(data, "chevron-right")</span>
-											</button>
-										} else {
-											<span class={ templ.Classes("block truncate", templ.KV("sr-only", !column.ShowLabel)) }>{ columnHeading(column) }</span>
-										}
-									</div>
-									<button type="button" role="separator" aria-orientation="vertical" aria-label={ "Resize " + columnHeading(column) } aria-controls="data-table" aria-valuemin="96" aria-valuenow="200" data-column-resize={ fmt.Sprint(index) } title="Drag to resize. Double-click or press Enter to fit content." class="absolute inset-y-0 right-0 w-2 cursor-col-resize touch-none select-none hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"></button>
-								</th>
-							}
-							<th scope="col" data-column-key="actions" class="sticky top-0 z-10 border border-border bg-background px-3 py-2 text-sm font-medium">
-								Actions
-								<button type="button" role="separator" aria-orientation="vertical" aria-label="Resize Actions" aria-controls="data-table" aria-valuemin="96" aria-valuenow="96" data-column-resize="actions" title="Drag to resize. Double-click or press Enter to fit content." class="absolute inset-y-0 right-0 w-2 cursor-col-resize touch-none select-none hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"></button>
-							</th>
-						</tr>
-					</thead>
-					<tbody>
-						for _, entity := range data.Entities {
-							@TableRow(data, entity)
 						}
-					</tbody>
-				</table>
-				<p data-table-announcement class="sr-only" role="status" aria-live="polite"></p>
-			</div>
+						<th scope="col" data-column-key="actions" class="sticky top-0 z-10 bg-background px-3 py-2 text-sm font-medium">
+							Actions
+							<button type="button" role="separator" aria-orientation="vertical" aria-label="Resize Actions" aria-controls="data-table" aria-valuemin="96" aria-valuenow="96" data-column-resize="actions" title="Drag to resize. Double-click or press Enter to fit content." class="absolute inset-y-0 right-0 w-2 cursor-col-resize touch-none select-none hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"></button>
+						</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, entity := range data.Entities {
+						@TableRow(data, entity)
+					}
+				</tbody>
+			</table>
+			<p data-table-announcement class="sr-only" role="status" aria-live="polite"></p>
 		} else {
 			for _, entity := range data.Entities {
 				@EntityCard(data, entity)
 			}
 		}
-	</div>
+	</main>
+}
+
+templ ColumnSort(data PageData, key, label string) {
+	<button type="button" data-column-sort={ key } aria-label={ "Sort by " + label } title={ "Sort by " + label } class="table-sort-button">
+		<span data-sort-indicator aria-hidden="true">@Icon(data, "chevron-right")</span>
+	</button>
 }
 
 templ TableRow(data PageData, entity EntityView, oob ...bool) {
 	<tr id={ fmt.Sprintf("entity-%d", entity.Index) } { oobAttrs(len(oob) > 0 && oob[0])... } data-entity-index={ fmt.Sprint(entity.Index) } class={ entity.HighlightClass }>
-		<td data-column-key="number" class="border border-border px-2 py-2 align-top text-right text-sm text-muted-foreground tabular-nums">{ fmt.Sprint(entity.Index + 1) }</td>
+		<td data-column-key="number" class="px-2 py-2 align-top text-right text-sm text-muted-foreground tabular-nums">{ fmt.Sprint(entity.Index + 1) }</td>
 		for index, widget := range entity.Cells {
-			<td data-column-key={ fmt.Sprint(index) } class="border border-border p-0 align-top">
+			<td id={ fmt.Sprintf("cell-%d-%d", entity.Index, index) } data-column-key={ fmt.Sprint(index) } data-table-cell tabindex="-1" class="p-0 align-top">
 				if widget.Type == schema.WidgetTextarea || widget.Type == schema.WidgetMultiSelect {
 					<details open?={ widget.Field.Error!="" }>
 						@CellSummary(entity.Index, *widget.Field, false)
@@ -104,13 +116,13 @@ templ TableRow(data PageData, entity EntityView, oob ...bool) {
 				}
 			</td>
 		}
-		<td data-column-key="actions" class="border border-border p-2 align-top text-sm"><button data-confirm-reset hx-post={ templ.SafeURL(fmt.Sprintf("/s/%s/entities/%d/reset", data.Token, entity.Index)) } hx-target={ fmt.Sprintf("#entity-%d", entity.Index) } hx-swap="outerHTML settle:0ms">Reset</button></td>
+		<td data-column-key="actions" class="p-2 align-top text-sm"><button data-confirm-reset hx-post={ templ.SafeURL(fmt.Sprintf("/s/%s/entities/%d/reset", data.Token, entity.Index)) } hx-target={ fmt.Sprintf("#entity-%d", entity.Index) } hx-swap="outerHTML settle:0ms">Reset</button></td>
 	</tr>
 }
 
 templ EntityCard(data PageData, entity EntityView, oob ...bool) {
-	<section { oobAttrs(len(oob) > 0 && oob[0])... } id={ fmt.Sprintf("entity-%d", entity.Index) } class="rounded-lg border bg-card text-card-foreground shadow-xs [content-visibility:auto] [contain-intrinsic-size:auto_600px]">
-		<header class={ templ.Classes("flex items-center justify-between gap-4 px-5 py-4", templ.KV("border-b", !entity.Collapsed)) }>
+	<section { oobAttrs(len(oob) > 0 && oob[0])... } id={ fmt.Sprintf("entity-%d", entity.Index) } data-card class="rounded-lg border bg-card text-card-foreground shadow-xs [content-visibility:auto] [contain-intrinsic-size:auto_600px]">
+		<header id={ fmt.Sprintf("card-nav-%d", entity.Index) } data-card-nav tabindex="0" aria-label={ "Navigate " + entity.Title } class={ templ.Classes("flex items-center justify-between gap-4 px-5 py-4", templ.KV("border-b", !entity.Collapsed)) }>
 			<div class="flex min-w-0 items-center gap-3">
 				@CollapseToggle(data, entity)
 				if entity.HasHeader {
@@ -245,6 +257,7 @@ templ DisplaySlots(data PageData, entity EntityView) {
 templ CollapseToggle(data PageData, entity EntityView) {
 	<button
 		type="button"
+		data-card-toggle
 		class="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground"
 		aria-expanded={ fmt.Sprintf("%t", !entity.Collapsed) }
 		aria-label={ collapseLabel(entity) }
@@ -314,6 +327,7 @@ templ Control(data PageData, entity EntityView, widget WidgetView, header bool) 
 			case schema.WidgetSelect:
 				<select
 					id={ fieldID(entity.Index, widget.Field.Field.Name) }
+					data-arrow-field?={ header && data.ArrowField != "" && widget.Field.Field.Name == data.ArrowField }
 					name="value"
 					class={ inputClass(header) }
 					disabled?={ widget.Field.Field.Readonly }
@@ -495,6 +509,19 @@ templ ConfirmationDialog(id, title, message, confirmLabel, cancelLabel string) {
 			<button value="confirm" class={ primaryButtonClass }>{ confirmLabel }</button>
 		</form>
 	</dialog>
+}
+
+templ Logo() {
+	<svg class="block h-full w-auto max-w-full" width="4837" height="936" viewBox="0 0 4837 936" fill="currentColor" role="img" aria-label="Twikko" xmlns="http://www.w3.org/2000/svg">
+		<path d="M516 184H684V352H800V584H684V752H516V868H284V752H116V584H0V352H116V184H284V68H516V184ZM232 300V636H568V300H232Z" fill-rule="evenodd" clip-rule="evenodd"></path>
+		<path d="M4446.47 885.914C4385.41 885.914 4330.85 872.886 4282.81 846.83C4235.58 820.774 4198.54 784.54 4171.66 738.128C4144.79 691.716 4131.36 637.975 4131.36 576.907C4131.36 517.467 4144.79 464.54 4171.66 418.128C4199.35 370.902 4237.21 333.853 4285.25 306.983C4333.29 280.113 4388.66 266.678 4451.36 266.678C4513.24 266.678 4567.8 279.706 4615.02 305.762C4662.25 331.818 4699.3 368.052 4726.17 414.464C4753.04 460.876 4766.47 514.617 4766.47 575.685C4766.47 635.126 4752.63 688.459 4724.95 735.685C4698.08 782.098 4660.62 818.739 4612.58 845.609C4564.54 872.479 4509.17 885.914 4446.47 885.914ZM4448.92 739.35C4489.63 739.35 4522.2 726.729 4546.63 701.487C4571.05 675.431 4583.27 633.904 4583.27 576.907C4583.27 540.266 4577.98 510.138 4567.39 486.525C4556.8 462.098 4541.33 443.777 4520.98 431.563C4501.44 419.35 4477.42 413.243 4448.92 413.243C4422.05 413.243 4398.43 418.942 4378.08 430.342C4358.54 441.741 4343.06 459.248 4331.66 482.861C4320.27 506.474 4314.57 537.416 4314.57 575.685C4314.57 630.24 4326.37 671.36 4349.99 699.044C4373.6 725.914 4406.58 739.35 4448.92 739.35Z"></path>
+		<path d="M3709.67 548.236L3931.96 284.998H4149.37V287.44L3887.75 568.283L4153.03 865.151V867.594H3925.86L3709.67 601.846L3709.67 867.594H3533.8V0.417969H3709.67V548.236Z"></path>
+		<path d="M3069.36 548.236L3291.65 284.998H3509.06V287.44L3247.43 568.283L3512.72 865.151V867.594H3285.55L3069.36 601.846L3069.36 867.594H2893.48V0.417969H3069.36V548.236Z"></path>
+		<path d="M2634.21 284.998V718.586H2827.19V867.594H2266.58V718.586H2457.11V434.006H2291.01V284.998H2634.21Z"></path>
+		<path d="M2458.2 0.400391H2634.2V160.4H2458.2V0.400391Z"></path>
+		<path d="M1768.61 652.347L1879.1 349.73H1896.2L2006.54 649.698L2058.64 284.998H2228.42L2125.82 867.594H1964.6L1883.99 627.704L1803.38 867.594H1648.26L1548.11 284.998H1717.88L1768.61 652.347Z"></path>
+		<path d="M1574.66 214.158H1335.27V867.594H1159.39V214.158H920V67.5938H1574.66V214.158Z"></path>
+	</svg>
 }
 
 // Icon draws a vendored Tabler icon (static/icons/<name>.svg) in the current

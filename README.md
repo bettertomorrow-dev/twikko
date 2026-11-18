@@ -195,9 +195,11 @@ so their editors have no separate borders or repeated visible captions.
 
 Click a column's sort button to alternate ascending and descending order. The
 first column contains permanent row numbers from the input file; sort it
-ascending to restore file order. Drag a column's move handle to arrange data
-columns. Row numbers and actions stay at the edges. Sorting and column movement
-do not change record identity or the order written to the result file.
+ascending to restore file order. Drag a column's heading or the space beside
+it to reorder columns. With the heading focused, press Space, then use the
+arrow keys and press Enter to finish. Row numbers and actions stay at the edges.
+Sorting and column movement do not change record identity or the order written
+to the result file.
 
 Hover a cell to strengthen its border, or hold Shift to tint its row and column.
 Views can also set `view.table.row_highlights` rules for conditional row
@@ -215,3 +217,32 @@ Drag the floating action button to snap it to any screen corner with the same
 inset. With the button focused, Alt + arrow keys also choose a corner.
 
 For managed development sessions with `rundevrun`, see [the runner setup](docs/RUNDEV.md).
+
+### Keyboard navigation
+
+In card view, press the up or down arrow to focus the first card. Keep using
+the arrows to move between cards. Shift+Backspace expands or collapses the
+focused card. Enter opens it for editing, expanding it if necessary. Tab and
+Shift+Tab cycle through its controls. Escape returns to card navigation. An open
+menu or picker closes first.
+
+To let the left and right arrows change an enum from the focused card header,
+place its control in the header and name it with `view.cards.arrow_field`:
+
+```yaml
+view:
+  cards:
+    arrow_field: status
+    header:
+      - {source: status}
+```
+
+Each arrow press changes the value by one option, stopping at either end.
+The field must be an editable enum. Undo reverses these changes.
+
+In table view, the top-left data cell starts focused. Use the arrow keys to move
+between cells and Enter to edit the focused cell. Enter selects any existing
+text in a text or multiline field. While editing, Enter applies the value and
+Escape discards the edit. Both return focus to the cell. Use
+Shift+Enter for a newline in a multiline field. Moving focus outside the cell
+also applies the edit.

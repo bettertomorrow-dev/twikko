@@ -56,16 +56,23 @@ func TestTableSortAndHighlightResponses(t *testing.T) {
 	var sorted struct {
 		Order []int `json:"order"`
 	}
-	if err := json.Unmarshal([]byte(post(t, s, "/table/sort?column=0&direction=asc", "")), &sorted); err != nil {
+	request := httptest.NewRequest(http.MethodGet, "/s/"+s.Token()+"/table/sort?column=0&direction=asc", nil)
+	request.Host = "table.example.localhost:8080"
+	response := httptest.NewRecorder()
+	s.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("sort through proxy host: %d %s", response.Code, response.Body.String())
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &sorted); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(sorted.Order, []int{1, 0, 2}) {
 		t.Fatalf("sort: %v", sorted.Order)
 	}
-	request := httptest.NewRequest(http.MethodPost, "/s/"+s.Token()+"/entities/0/fields/amount", strings.NewReader("value=0"))
+	request = httptest.NewRequest(http.MethodPost, "/s/"+s.Token()+"/entities/0/fields/amount", strings.NewReader("value=0"))
 	request.Host = "127.0.0.1:1234"
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	response := httptest.NewRecorder()
+	response = httptest.NewRecorder()
 	s.ServeHTTP(response, request)
 	if response.Code != http.StatusOK || !strings.Contains(response.Header().Get("HX-Trigger-After-Swap"), `"className":""`) {
 		t.Fatalf("highlight edit: %d %s", response.Code, response.Header())
@@ -98,9 +105,8 @@ func TestTableEndpointsRejectInvalidRequests(t *testing.T) {
 	}{
 		{"/table/sort?column=actions&direction=asc", "127.0.0.1:1234", 400},
 		{"/table/sort?column=0&direction=none", "127.0.0.1:1234", 400},
-		{"/table/sort?column=0&direction=asc", "example.com", 403},
 	} {
-		r := httptest.NewRequest(http.MethodPost, "/s/"+s.Token()+tc.path, nil)
+		r := httptest.NewRequest(http.MethodGet, "/s/"+s.Token()+tc.path, nil)
 		r.Host = tc.host
 		w := httptest.NewRecorder()
 		s.ServeHTTP(w, r)
