@@ -25,7 +25,7 @@ import (
 
 // assetName lists what /assets/ serves: the stylesheet, the scripts and the
 // vendored icons.
-var assetName = regexp.MustCompile(`^(styles\.css|htmx\.min\.js|app\.js|table\.js|icons/[a-z0-9-]+\.svg)$`)
+var assetName = regexp.MustCompile(`^(styles\.css|htmx\.min\.js|app\.js|table\.js|keyboard\.js|icons/[a-z0-9-]+\.svg)$`)
 
 type Event struct {
 	Status string
@@ -100,8 +100,8 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 		s.requireWriteHost(w, r, s.save)
 	case r.Method == http.MethodPost && relative == "cancel":
 		s.requireWriteHost(w, r, s.cancel)
-	case r.Method == http.MethodPost && relative == "table/sort":
-		s.requireWriteHost(w, r, s.sortTable)
+	case r.Method == http.MethodGet && relative == "table/sort":
+		s.sortTable(w, r)
 	case r.Method == http.MethodGet && relative == "table/highlights":
 		s.requireWriteHost(w, r, s.tableHighlights)
 	case r.Method == http.MethodPost && strings.HasPrefix(relative, "entities/"):

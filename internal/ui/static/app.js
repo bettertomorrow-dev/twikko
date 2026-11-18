@@ -8,7 +8,14 @@ document.addEventListener("click", function (event) {
   closeMenus(event.target.closest("details[data-menu]"));
 });
 document.addEventListener("keydown", function (event) {
-  if (event.key === "Escape") closeMenus(null);
+  if (event.key === "Escape") {
+    var menu = event.target.closest("details[data-menu][open]");
+    if (menu) {
+      event.preventDefault();
+      menu.querySelector("summary").focus();
+      closeMenus(null);
+    } else closeMenus(null);
+  }
 });
 
 // Date, time and date-time pickers. The browser draws a native picker outside
@@ -265,6 +272,7 @@ document.addEventListener("keydown", function (event) {
     var parsed = parse(f.kind, f.hidden.value);
     var anchor = parsed.date || today();
     var pop = document.createElement("div");
+    pop.dataset.pickerAnchor = f.input.id;
     pop.className = "fixed z-50 rounded-md border bg-popover p-3 text-popover-foreground shadow-md outline-none";
     pop.setAttribute("role", "dialog");
     pop.setAttribute("aria-label", f.input.getAttribute("aria-label") || "Pick a value");
@@ -446,6 +454,7 @@ document.addEventListener("keydown", function (event) {
     }
     if (!current) return;
     if (event.key === "Escape") {
+      event.preventDefault();
       close(true);
       return;
     }
@@ -565,7 +574,7 @@ document.addEventListener("htmx:afterRequest", function (event) {
       // have moved, and invokes confirm again with the same options object.
       var options = event.detail.etc;
       if (!options.values) options.values = {};
-      if (!options.values.history_group) options.values.history_group = group;
+      if (!options.values.history_group) options.values.history_group = elt.hasAttribute("data-arrow-changing") ? crypto.randomUUID() : group;
     }
   });
   document.addEventListener("keydown", function (event) {

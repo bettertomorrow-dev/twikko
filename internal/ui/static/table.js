@@ -133,7 +133,9 @@
       handle.setPointerCapture(event.pointerId);
       return;
     }
-    handle = event.target.closest("[data-column-drag]");
+    if (event.target.closest("[data-column-sort]")) return;
+    var header = event.target.closest("#data-table th");
+    handle = header && header.querySelector("[data-column-drag]");
     if (!handle) return;
     event.preventDefault();
     finishKeyboard(false);
@@ -164,9 +166,8 @@
       state.target = key;
       state.after = event.clientX >= box.x + box.width / 2;
       header.dataset.columnDrop = state.after ? "after" : "before";
-      var scroll = state.grid.parentElement, bounds = scroll.getBoundingClientRect();
-      if (event.clientX > bounds.right - 40) scroll.scrollLeft += 24;
-      if (event.clientX < bounds.left + 40) scroll.scrollLeft -= 24;
+      if (event.clientX > document.documentElement.clientWidth - 40) window.scrollBy(24, 0);
+      if (event.clientX < 40) window.scrollBy(-24, 0);
       return;
     }
     updateShift(event.shiftKey);
@@ -264,7 +265,7 @@
     var direction = header.getAttribute("aria-sort") === "ascending" ? "desc" : "asc";
     var url = grid.dataset.sortUrl + "?column=" + encodeURIComponent(button.dataset.columnSort) + "&direction=" + direction;
     grid.setAttribute("aria-busy", "true");
-    htmx.ajax("POST", url, {
+    htmx.ajax("GET", url, {
       source: button, target: grid, swap: "none",
       handler: function (_, response) {
         if (response.xhr.status < 200 || response.xhr.status >= 300) throw new Error("Unable to sort table");

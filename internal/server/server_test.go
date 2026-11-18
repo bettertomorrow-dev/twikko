@@ -567,8 +567,9 @@ func TestLinesRenderAsSeparators(t *testing.T) {
 }
 
 func TestPageHeadingAndFooter(t *testing.T) {
+	const footerLogo = `fill="currentColor" role="img" aria-label="Twikko"`
 	page := get(t, testServer(t))
-	for _, want := range []string{"<title>Twikko</title>", ">Twikko</h1>", "Twikko, 2026"} {
+	for _, want := range []string{"<title>Twikko</title>", ">Twikko</h1>", footerLogo} {
 		if !strings.Contains(page, want) {
 			t.Errorf("default page lacks %q", want)
 		}
@@ -593,7 +594,7 @@ entities: [{key: A-1}]
 	response := httptest.NewRecorder()
 	server.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/s/"+server.token+"/", nil))
 	body := response.Body.String()
-	for _, want := range []string{"<title>Release notes</title>", ">Release notes</h1>", "Entries for the 2.1 release.", "Twikko, 2026"} {
+	for _, want := range []string{"<title>Release notes</title>", ">Release notes</h1>", "Entries for the 2.1 release.", footerLogo} {
 		if !strings.Contains(body, want) {
 			t.Errorf("page lacks %q", want)
 		}

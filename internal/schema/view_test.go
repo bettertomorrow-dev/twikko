@@ -167,3 +167,37 @@ view:
 		t.Fatal("accepted invalid launch mode")
 	}
 }
+
+func TestCardArrowField(t *testing.T) {
+	dir := t.TempDir()
+	view := filepath.Join(dir, "view.yaml")
+	data := filepath.Join(dir, "data.yaml")
+	if err := os.WriteFile(data, []byte("- {status: a}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, field, header, arrow string
+		valid                      bool
+	}{
+		{"enum", "{name: status, type: enum, options: [a, b]}", "[{source: status}]", "status", true},
+		{"readonly", "{name: status, type: enum, options: [a, b], readonly: true}", "[{source: status}]", "status", false},
+		{"text", "{name: status, type: text}", "[{source: status}]", "status", false},
+		{"display", "{name: status, type: enum, options: [a, b]}", "[{type: tag, source: status}]", "status", false},
+		{"empty", "{name: status, type: enum, options: [a, b]}", "[{source: status}]", "''", false},
+		{"null", "{name: status, type: enum, options: [a, b]}", "[{source: status}]", "null", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			config := "version: 1\nschema:\n  fields: [" + tc.field + "]\nview:\n  cards:\n    header: " + tc.header + "\n    arrow_field: " + tc.arrow + "\n"
+			if err := os.WriteFile(view, []byte(config), 0600); err != nil {
+				t.Fatal(err)
+			}
+			doc, err := LoadView(view, data)
+			if (err == nil) != tc.valid {
+				t.Fatalf("error = %v, valid = %v", err, tc.valid)
+			}
+			if tc.valid && doc.View.Cards.ArrowField != tc.arrow {
+				t.Fatalf("arrow field = %q", doc.View.Cards.ArrowField)
+			}
+		})
+	}
+}

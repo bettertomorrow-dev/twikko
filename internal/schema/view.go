@@ -29,8 +29,9 @@ type Table struct {
 	RowHighlights []RowHighlight `yaml:"row_highlights,omitempty"`
 }
 type Cards struct {
-	Header *Header `yaml:"header"`
-	Body   *Body   `yaml:"body"`
+	Header     *Header `yaml:"header"`
+	Body       *Body   `yaml:"body"`
+	ArrowField string  `yaml:"arrow_field"`
 }
 
 func LoadView(viewPath, dataPath string) (*Document, error) {
@@ -129,8 +130,14 @@ func LoadViewWithMode(viewPath, dataPath, mode string) (*Document, error) {
 			}
 		}
 		if c := MapValue(vn, "cards"); c != nil {
-			if err = checkKeys(c, "view.cards", "header", "body"); err != nil {
+			if err = checkKeys(c, "view.cards", "header", "body", "arrow_field"); err != nil {
 				return nil, err
+			}
+			if a := MapValue(c, "arrow_field"); a != nil {
+				if a.Kind != yaml.ScalarNode || a.Tag != "!!str" || strings.TrimSpace(a.Value) == "" {
+					return nil, fmt.Errorf("view.cards.arrow_field must be a nonempty field name")
+				}
+				v.Cards.ArrowField = a.Value
 			}
 			if h := MapValue(c, "header"); h != nil {
 				if h.Kind != yaml.SequenceNode {
@@ -183,6 +190,22 @@ func LoadViewWithMode(viewPath, dataPath, mode string) (*Document, error) {
 	}
 	for i := range s.Fields {
 		s.Fields[i].Choices = temp.Fields[i].Choices
+	}
+	if v.Cards.ArrowField != "" {
+		valid := false
+		if v.Cards.Header != nil {
+			for _, w := range v.Cards.Header.Widgets {
+				for _, f := range s.Fields {
+					if w.Source == v.Cards.ArrowField && w.IsControl() && f.Name == w.Source && f.Type == Enum && !f.Readonly {
+						kind, _ := ControlKind(w, f)
+						valid = kind == WidgetSelect
+					}
+				}
+			}
+		}
+		if !valid {
+			return nil, fmt.Errorf("view.cards.arrow_field must name an editable enum control in the card header")
+		}
 	}
 	tableSeen := map[string]bool{}
 	declared := fieldMap(s.Fields)
