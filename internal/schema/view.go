@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -191,24 +192,17 @@ func LoadViewWithMode(viewPath, dataPath, mode string) (*Document, error) {
 	for i := range s.Fields {
 		s.Fields[i].Choices = temp.Fields[i].Choices
 	}
-	if v.Cards.ArrowField != "" {
-		valid := false
-		if v.Cards.Header != nil {
-			for _, w := range v.Cards.Header.Widgets {
-				for _, f := range s.Fields {
-					if w.Source == v.Cards.ArrowField && w.IsControl() && f.Name == w.Source && f.Type == Enum && !f.Readonly {
-						kind, _ := ControlKind(w, f)
-						valid = kind == WidgetSelect
-					}
-				}
-			}
-		}
-		if !valid {
+	declared := fieldMap(s.Fields)
+	if name := v.Cards.ArrowField; name != "" {
+		field := declared[name]
+		if field.Type != Enum || field.Readonly || v.Cards.Header == nil ||
+			!slices.ContainsFunc(v.Cards.Header.Widgets, func(w Widget) bool {
+				return w.Source == name && w.IsControl()
+			}) {
 			return nil, fmt.Errorf("view.cards.arrow_field must name an editable enum control in the card header")
 		}
 	}
 	tableSeen := map[string]bool{}
-	declared := fieldMap(s.Fields)
 	for i := range v.Table.Columns {
 		w := &v.Table.Columns[i]
 		if err = validateWidget(fmt.Sprintf("view.table.columns[%d]", i), w, declared); err != nil {

@@ -13,8 +13,8 @@ document.addEventListener("keydown", function (event) {
     if (menu) {
       event.preventDefault();
       menu.querySelector("summary").focus();
-      closeMenus(null);
-    } else closeMenus(null);
+    }
+    closeMenus(null);
   }
 });
 

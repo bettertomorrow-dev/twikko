@@ -2,7 +2,6 @@
 (function () {
   var isolated = null;
   var pendingCard = null;
-  var activeCell = null;
   var activeCellElement = null;
   var restoreCellFocus = false;
   var cellDraft = null;
@@ -47,14 +46,12 @@
     select.dispatchEvent(new Event('change', { bubbles: true }));
     select.removeAttribute('data-arrow-changing');
   }
-  function cellKey(cell) { return { row: cell.parentElement.id, column: cell.dataset.columnKey }; }
   function cells() { return Array.from(document.querySelectorAll('#data-table tbody [data-table-cell]')); }
   function activate(cell, focus) {
     if (!cell) return;
     if (activeCellElement && activeCellElement !== cell) activeCellElement.tabIndex = -1;
     cell.tabIndex = 0;
     activeCellElement = cell;
-    activeCell = cellKey(cell);
     if (focus) {
       cell.focus();
       var table = cell.closest('table');
@@ -66,9 +63,7 @@
   function restoreCells() {
     var all = cells();
     if (!all.length) return;
-    var cell = activeCell && all.find(function (item) {
-      return item.parentElement.id === activeCell.row && item.dataset.columnKey === activeCell.column;
-    });
+    var cell = activeCellElement && document.getElementById(activeCellElement.id);
     activate(cell || all[0], false);
     all.forEach(function (item) {
       if (item.hasAttribute('data-keyboard-ready')) return;
@@ -92,13 +87,11 @@
     });
   }
   function allowEditor(cell) {
-    if (!cell.querySelector('input:not([type="hidden"]):not(:disabled), select:not(:disabled), textarea:not(:disabled)')) return;
+    var editor = cell.querySelector('input:not([type="hidden"]):not(:disabled), select:not(:disabled), textarea:not(:disabled)');
+    if (!editor) return;
     var details = cell.querySelector('details');
     if (details) details.open = true;
     allowEditorTabbing(cell);
-    var items = available(cell);
-    var editor = items.find(function (el) { return el.matches('input:not([type="hidden"]), select, textarea'); });
-    if (!editor) return;
     editor.focus();
     if (editor.matches('input[type="text"]:not([inputmode]), textarea')) editor.select();
   }
