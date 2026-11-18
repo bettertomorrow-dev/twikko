@@ -227,6 +227,7 @@ func showWidgetLabel(global, local *bool, fallback bool) bool {
 }
 
 type PageData struct {
+	ArrowField         string
 	RelativeHighlights bool
 	NewFormat          bool
 	Mode               string
@@ -277,6 +278,9 @@ func NewPageData(store *session.Store, token string) PageData {
 		Entities:           make([]EntityView, store.EntityCount()),
 	}
 	var globalLabels *bool
+	if v := store.View(); v != nil {
+		data.ArrowField = v.Cards.ArrowField
+	}
 	if v := store.View(); v != nil && v.ShowLabels != nil {
 		globalLabels = v.ShowLabels
 	}

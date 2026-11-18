@@ -89,8 +89,37 @@ view:
       assert.equal(await page.getByRole('switch', { name: 'enabled', exact: true }).count(), 1);
       let resizedWidth;
       if (mode === 'table') {
+        for (const [width, height] of [[2400, 900], [900, 600]]) {
+          await page.setViewportSize({ width, height });
+          const layout = await page.locator('#data-table').evaluate(table => {
+            const scrollArea = document.querySelector('#entities');
+            const footer = document.querySelector('footer').getBoundingClientRect();
+            const area = scrollArea.getBoundingClientRect();
+            return { bottom: footer.bottom, footerTop: footer.top, tableAreaBottom: area.bottom,
+              tableAreaLeft: area.left, tableAreaWidth: area.width, tableWidth: table.getBoundingClientRect().width,
+              scrolls: document.scrollingElement.scrollHeight > document.scrollingElement.clientHeight };
+          });
+          assert.equal(layout.bottom, height);
+          assert.equal(layout.tableAreaBottom, layout.footerTop);
+          assert.equal(layout.tableAreaLeft, 0);
+          assert.ok(layout.tableAreaWidth >= width);
+          assert.ok(layout.tableWidth >= width);
+          assert.equal(layout.scrolls, false);
+        }
+        const horizontal = await page.locator('#data-table').evaluate(table => {
+          const heading = document.querySelector('h1');
+          const logo = document.querySelector('footer svg');
+          const before = [heading, logo, table].map(element => element.getBoundingClientRect().left);
+          window.scrollTo(document.scrollingElement.scrollWidth, 0);
+          const delta = [heading, logo, table].map((element, index) => element.getBoundingClientRect().left - before[index]);
+          window.scrollTo(0, 0);
+          return delta;
+        });
+        assert.deepEqual(horizontal.slice(0, 2), [0, 0]);
+        assert.ok(horizontal[2] < 0);
+        await page.setViewportSize({ width: 1440, height: 900 });
         const cellStyle = await page.locator('td').first().evaluate(el => {
-          const s = getComputedStyle(el); return [s.borderTopWidth, s.borderRightWidth];
+          const s = getComputedStyle(el); return [s.borderBottomWidth, s.borderRightWidth];
         });
         assert.deepEqual(cellStyle, ['1px', '1px']);
         for (const selector of ['#field-0-title', '#field-0-due', '#field-0-flag']) {
@@ -115,14 +144,15 @@ view:
       await page.locator('#field-0-title').focus();
       await page.evaluate(() => { window.originalEditor = document.querySelector('#field-0-title'); });
       await page.locator('#field-0-title').fill('Focus check');
-      await page.waitForFunction(() => document.querySelector('#save-status').textContent.includes('1 changed'));
       assert.equal(await page.evaluate(() => window.originalEditor === document.activeElement), true);
+      if (mode === 'table') await page.keyboard.press('Enter');
+      await page.waitForFunction(() => document.querySelector('#save-status').textContent.includes('1 changed'));
       const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
       await page.keyboard.press(`${modifier}+z`);
       await page.waitForFunction(() => document.querySelector('#field-0-title').value === 'Before' && !document.querySelector('[inert]'));
       await page.keyboard.press(`${modifier}+Shift+z`);
       await page.waitForFunction(() => document.querySelector('#field-0-title').value === 'Focus check' && !document.querySelector('[inert]'));
-      await page.waitForFunction(() => document.activeElement.id === 'field-0-title');
+      await page.waitForFunction(mode => mode === 'table' ? document.activeElement.matches('[data-table-cell]') : document.activeElement.id === 'field-0-title', mode);
       await page.locator('#field-0-title').press('End');
       await page.locator('#field-0-title').pressSequentially(' typed');
       await page.locator('#save-bar summary').click();
@@ -143,9 +173,11 @@ view:
       await page.waitForFunction(() => document.querySelector('#field-0-title').value === 'Before' && !document.querySelector('[inert]'));
       if (mode === 'table') resizedWidth = '200px';
       await page.locator('#field-0-n').fill('1e-');
+      if (mode === 'table') await page.keyboard.press('Enter');
       await page.waitForFunction(() => document.querySelector('#status-0-n').textContent.includes('number'));
       assert.equal(await page.locator('#field-0-n').inputValue(), '1e-');
       await page.locator('#field-0-due').fill('2026-');
+      if (mode === 'table') await page.keyboard.press('Enter');
       await page.waitForFunction(() => document.querySelector('#status-0-due').textContent.includes('date'));
       if (mode === 'cards') await page.locator('#entity-0 details[data-menu] summary').click();
       await page.getByRole(mode === 'cards' ? 'menuitem' : 'button', { name: 'Reset', exact: true }).click();
@@ -250,6 +282,9 @@ view:
       const width = await page.locator('col[data-column-key="0"]').evaluate(col => col.style.width);
 
       const move = page.locator('[data-column-drag="0"]');
+      await move.click({ position: { x: 5, y: 10 } });
+      assert.deepEqual(await order(), [0, 1, 2, 3]);
+      assert.equal(await page.locator('th[data-column-key="0"]').getAttribute('aria-sort'), 'none');
       await move.focus(); await move.press('Space'); await move.press('ArrowRight'); await move.press('Enter');
       assert.deepEqual(await keys(), ['number', '1', '0', '2', 'actions']);
       assert.equal(await page.locator('col[data-column-key="0"]').evaluate(col => col.style.width), width);
@@ -282,6 +317,7 @@ view:
 
       await move.focus(); await move.press('Space'); await move.press('ArrowRight'); await move.press('Enter');
       await page.locator('#field-0-n').fill('invalid');
+      await page.keyboard.press('Enter');
       await page.waitForFunction(() => document.querySelector('#status-0-n').textContent.includes('number'));
       await page.waitForFunction(() => !document.querySelector('tr[data-entity-index="0"]').classList.contains('row-highlight-warning'));
       await page.locator('tr[data-entity-index="0"]').getByRole('button', {name: 'Reset', exact: true}).click();
@@ -304,6 +340,7 @@ view:
       await sort('1', 'ascending');
       await page.locator('#field-0-title').fill('Changed source first');
       await page.locator('#field-0-n').fill('1');
+      await page.keyboard.press('Enter');
       await page.waitForFunction(() => document.querySelector('#save-status').textContent.includes('2 changed'));
       assert.deepEqual(await order(), [1, 2, 0, 3]);
       // Sorting immediately after input must wait for the queued edit.
@@ -358,8 +395,39 @@ view:
       const orderView = path.join(process.cwd(), 'examples', 'orders.view.yaml');
       const {page, output, errors} = await open('table', input, orderView);
       assert.equal(await page.locator('tbody tr').count(), 500);
+      const scrolled = await page.locator('#data-table').evaluate(table => {
+        const footer = document.querySelector('footer');
+        const footerStartsBelowViewport = footer.getBoundingClientRect().top > innerHeight;
+        window.scrollTo(0, 300);
+        const titleScrolledAway = document.querySelector('h1').getBoundingClientRect().bottom < 0;
+        const columnHeaderIsSticky = Math.abs(table.querySelector('th').getBoundingClientRect().top) < 1;
+        window.scrollTo(0, document.scrollingElement.scrollHeight);
+        const footerBottom = footer.getBoundingClientRect().bottom;
+        const footerIsVisible = footerBottom <= innerHeight && footerBottom > 0;
+        window.scrollTo(0, 0);
+        return { footerStartsBelowViewport, titleScrolledAway, columnHeaderIsSticky, footerIsVisible };
+      });
+      assert.deepEqual(scrolled, { footerStartsBelowViewport: true, titleScrolledAway: true, columnHeaderIsSticky: true, footerIsVisible: true });
+      await page.locator('#cell-30-0').focus();
+      for (let i = 0; i < 20; i++) {
+        await page.keyboard.press('ArrowUp');
+        assert.ok(await page.locator(':focus').evaluate(cell =>
+          cell.getBoundingClientRect().top >= cell.closest('table').querySelector('th').getBoundingClientRect().bottom - 1));
+      }
       assert.equal(await page.locator('tbody tr').first().getAttribute('data-entity-index'), '0');
       assert.equal(await page.locator('tbody tr').last().getAttribute('data-entity-index'), '499');
+      await page.evaluate(() => window.scrollTo(0, 300));
+      for (const colorScheme of ['light', 'dark']) {
+        await page.emulateMedia({ colorScheme });
+        const lines = await page.locator('[data-column-sort="3"]').evaluate(button => {
+          const header = getComputedStyle(button.closest('th'));
+          const row = getComputedStyle(document.querySelector('#data-table td'));
+          return [header.borderBottomWidth, header.borderRightWidth,
+            header.borderBottomColor === row.borderBottomColor, header.borderRightColor === row.borderRightColor,
+            header.borderBottomColor !== 'rgba(0, 0, 0, 0)'];
+        });
+        assert.deepEqual(lines, ['1px', '1px', true, true, true]);
+      }
       await page.locator('[data-column-sort="3"]').click();
       await page.waitForFunction(() => document.querySelector('th[data-column-key="3"]').getAttribute('aria-sort') === 'ascending');
       const prices = await page.locator('tbody [data-column-key="3"] input[name="value"]').evaluateAll(inputs => inputs.map(input => Number(input.value)));
